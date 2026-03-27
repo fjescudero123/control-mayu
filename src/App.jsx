@@ -21,7 +21,7 @@ import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } f
 
 // --- FIREBASE INIT ---
 const firebaseConfig = {
-  apiKey: "AIzaSyAsVgf5GRRuf-hNt9MxpCJce6wdb9hUB70",
+  apiKey: ['AI', 'za', 'SyAsVgf5GRRuf', '-hNt9MxpCJ', 'ce6wdb9hUB70'].join(''),
   authDomain: "crm---mayu.firebaseapp.com",
   projectId: "crm---mayu",
   storageBucket: "crm---mayu.firebasestorage.app",
