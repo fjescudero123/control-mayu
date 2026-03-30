@@ -1220,9 +1220,9 @@ export default function MayuApp() {
                             const canUpload = 
                               role === doc.uploaderRole || 
                               role === 'Administrador del sistema' ||
-                              (areaKey === 'comercial' && role === p.commercialLead) ||
-                              (areaKey === 'ingenieria' && role === p.technicalLead) ||
-                              (areaKey === 'operaciones' && (role === p.operationalLead || role === 'Gerente de Operaciones'));
+                              (areaKey === 'comercial' && (role === p.commercialLead || role === 'Project Manager' || role === 'Subgerente Comercial' || role === 'Gerente Comercial')) ||
+                              (areaKey === 'ingenieria' && (role === p.technicalLead || role === 'Project Manager' || role === 'Subgerente Comercial')) ||
+                              (areaKey === 'operaciones' && (role === p.operationalLead || role === 'Gerente de Operaciones' || role === 'Project Manager' || role === 'Subgerente Comercial'));
 
                             const isApprover = APPROVERS[areaKey.toUpperCase()]?.includes(role) || role === 'Administrador del sistema';
                             const needsMyApproval = doc.status === 'En revisión' && isApprover && doc.approvals[role] !== 'Aprobado' && doc.approvals[role] !== 'Aprobado con obs.';
