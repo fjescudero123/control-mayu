@@ -1638,7 +1638,7 @@ export default function MayuApp() {
                 >
                   <option value="">-- Crear proyecto de forma manual --</option>
                   {crmProjects
-                     .filter(p => p.estado_comercial === 'Negocio cerrado' || p.condicion_proyecto === 'aprobado')
+                     .filter(p => p.estado_comercial === 'Negocio cerrado')
                      .filter(p => !projects.some(existing => existing.crmId === p.id)) // Ocultar los ya importados
                      .map(p => (
                         <option key={p.id} value={p.id}>{p.nombre} - {p.cliente}</option>
