@@ -124,6 +124,7 @@ export default function MayuApp() {
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [uploadingDocs, setUploadingDocs] = useState({});
   const [isCreatingProject, setIsCreatingProject] = useState(false); 
+  const [testStatus, setTestStatus] = useState(''); // Estado para el botón de prueba
   
   const [usersDb, setUsersDb] = useState({});
   const [projects, setProjects] = useState([]);
@@ -246,6 +247,8 @@ export default function MayuApp() {
 
       // Quitar duplicados por seguridad
       phones = [...new Set(phones)];
+
+      console.log("Teléfonos recolectados post-filtro:", phones);
 
       if (phones.length === 0) {
          console.warn("ALERTA: Se canceló el Webhook porque no hay teléfonos reales configurados para el envío.");
@@ -990,9 +993,24 @@ export default function MayuApp() {
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-slate-800">{view === 'dashboard' ? 'Resumen General' : 'Directorio de Proyectos'}</h2>
                 {['Administrador del sistema', 'Gerente Comercial', 'Subgerente Comercial', 'Project Manager'].includes(role) && (
-                  <button onClick={() => setShowNewProjectModal(true)} className="bg-[#899264] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#788253] transition-colors shadow-sm flex items-center gap-2">
-                    <Plus size={18} /> {view === 'dashboard' ? 'Activar Nuevo Proyecto' : 'Nuevo Proyecto'}
-                  </button>
+                  <div className="flex gap-3 items-center">
+                    {testStatus && <span className="text-sm font-bold text-emerald-600 animate-pulse">{testStatus}</span>}
+                    <button 
+                      onClick={async () => {
+                        setTestStatus('Enviando señal...');
+                        await sendWhatsAppNotification(['Subgerente Comercial'], 'PRUEBA DE CONEXIÓN', 'Si recibes esto, el botón de prueba de MAYU logró conectarse con Make.com y Whapi con éxito.');
+                        setTestStatus('¡Señal enviada a Make!');
+                        setTimeout(() => setTestStatus(''), 6000);
+                      }} 
+                      className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors shadow-sm flex items-center gap-2"
+                    >
+                      <Send size={18} /> Forzar Prueba de Conexión
+                    </button>
+
+                    <button onClick={() => setShowNewProjectModal(true)} className="bg-[#899264] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#788253] transition-colors shadow-sm flex items-center gap-2">
+                      <Plus size={18} /> {view === 'dashboard' ? 'Activar Nuevo Proyecto' : 'Nuevo Proyecto'}
+                    </button>
+                  </div>
                 )}
               </div>
               
