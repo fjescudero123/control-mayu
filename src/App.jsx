@@ -16,13 +16,13 @@ if (typeof document !== 'undefined' && !document.getElementById('tailwind-cdn'))
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, addDoc } from 'firebase/firestore';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
-// --- FIREBASE INIT ---
+// --- FIREBASE INIT (Cerebro Central: crm---mayu) ---
 const firebaseConfig = {
-  // Evitamos el falso positivo del escáner de Netlify dividiendo la clave.
+  // Dividido para evitar falsos positivos en el escáner de Netlify
   apiKey: ['AI', 'za', 'SyAsVgf5GRRuf', '-hNt9MxpCJ', 'ce6wdb9hUB70'].join(''),
   authDomain: "crm---mayu.firebaseapp.com",
   projectId: "crm---mayu",
@@ -53,22 +53,22 @@ const ROLES = [
   'Encargado de Calidad'
 ];
 
-// MOCK_USERS ahora incluye correos electrónicos para las notificaciones
+// Usuarios iniciales con soporte para teléfonos (WhatsApp)
 const MOCK_USERS = {
-  'admin': { password: '123', name: 'Administrador IT', role: 'Administrador del sistema', email: 'admin@imayu.cl' },
-  'fjescudero': { password: '123', name: 'Felix Escudero', role: 'Gerente General', email: 'fjescudero@imayu.cl' },
-  'vescudero': { password: '123', name: 'Valentina Escudero', role: 'Gerente de Administración y Finanzas', email: 'vescudero@imayu.cl' },
-  'mepelman': { password: '123', name: 'Martin Epelman', role: 'Gerente de I+D y Producción', email: 'm.epelman@imayu.cl' },
-  'fescudero': { password: '123', name: 'Felix Escudero Vargas', role: 'Gerente Comercial', email: 'fescudero@imayu.cl' },
-  'clecaros': { password: '123', name: 'Carlos Lecaros', role: 'Gerente de Operaciones', email: 'clecaros@imayu.cl' },
-  'efernandez': { password: '123', name: 'Emilio Fernandez', role: 'Subgerente Comercial', email: 'efernandez@imayu.cl' },
-  'jsantibanez': { password: '123', name: 'Jose Santibañez', role: 'Project Manager', email: 'jsantibanez@imayu.cl' },
-  'cquintana': { password: '123', name: 'Carlos Quintana', role: 'Equipo de Diseño', email: 'cquintana@imayu.cl' },
-  'dcuevas': { password: '123', name: 'Daniela Cuevas', role: 'Equipo de Diseño', email: 'dcuevas@imayu.cl' },
-  'fjerez': { password: '123', name: 'Felipe Jerez', role: 'Jefe de Producción', email: 'fjerez@imayu.cl' },
-  'groman': { password: '123', name: 'Gabriel Roman', role: 'Jefe de Logística', email: 'groman@imayu.cl' },
-  'mhernandez': { password: '123', name: 'Mauricio Hernandez', role: 'Jefe de Bodega', email: 'mhernandez@imayu.cl' },
-  'jquevedo': { password: '123', name: 'Jorge Quevedo', role: 'Encargado de Calidad', email: 'jquevedo@imayu.cl' }
+  'admin': { password: '123', name: 'Administrador IT', role: 'Administrador del sistema', email: 'admin@imayu.cl', phone: '+56900000000' },
+  'fjescudero': { password: '123', name: 'Felix Escudero', role: 'Gerente General', email: 'fjescudero@imayu.cl', phone: '+56900000000' },
+  'vescudero': { password: '123', name: 'Valentina Escudero', role: 'Gerente de Administración y Finanzas', email: 'vescudero@imayu.cl', phone: '+56900000000' },
+  'mepelman': { password: '123', name: 'Martin Epelman', role: 'Gerente de I+D y Producción', email: 'm.epelman@imayu.cl', phone: '+56900000000' },
+  'fescudero': { password: '123', name: 'Felix Escudero Vargas', role: 'Gerente Comercial', email: 'fescudero@imayu.cl', phone: '+56900000000' },
+  'clecaros': { password: '123', name: 'Carlos Lecaros', role: 'Gerente de Operaciones', email: 'clecaros@imayu.cl', phone: '+56900000000' },
+  'efernandez': { password: '123', name: 'Emilio Fernandez', role: 'Subgerente Comercial', email: 'efernandez@imayu.cl', phone: '+56900000000' },
+  'jsantibanez': { password: '123', name: 'Jose Santibañez', role: 'Project Manager', email: 'jsantibanez@imayu.cl', phone: '+56900000000' },
+  'cquintana': { password: '123', name: 'Carlos Quintana', role: 'Equipo de Diseño', email: 'cquintana@imayu.cl', phone: '+56900000000' },
+  'dcuevas': { password: '123', name: 'Daniela Cuevas', role: 'Equipo de Diseño', email: 'dcuevas@imayu.cl', phone: '+56900000000' },
+  'fjerez': { password: '123', name: 'Felipe Jerez', role: 'Jefe de Producción', email: 'fjerez@imayu.cl', phone: '+56900000000' },
+  'groman': { password: '123', name: 'Gabriel Roman', role: 'Jefe de Logística', email: 'groman@imayu.cl', phone: '+56900000000' },
+  'mhernandez': { password: '123', name: 'Mauricio Hernandez', role: 'Jefe de Bodega', email: 'mhernandez@imayu.cl', phone: '+56900000000' },
+  'jquevedo': { password: '123', name: 'Jorge Quevedo', role: 'Encargado de Calidad', email: 'jquevedo@imayu.cl', phone: '+56900000000' }
 };
 
 const APPROVERS = {
@@ -128,7 +128,7 @@ export default function MayuApp() {
   
   const [usersDb, setUsersDb] = useState({});
   const [projects, setProjects] = useState([]);
-  const [crmProjects, setCrmProjects] = useState([]); // Base de datos del CRM (Proyectos Adjudicados)
+  const [crmProjects, setCrmProjects] = useState([]); // Proyectos del CRM
   
   const [currentUser, setCurrentUser] = useState(null);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
@@ -159,6 +159,7 @@ export default function MayuApp() {
   useEffect(() => { projectsRef.current = projects; }, [projects]);
   useEffect(() => { usersRef.current = usersDb; }, [usersDb]);
 
+  // 1. Firebase Auth Initializer
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -175,6 +176,7 @@ export default function MayuApp() {
     return () => unsubscribe();
   }, []);
 
+  // 2. Fetch Data from Firestore
   useEffect(() => {
     if (!fbUser) return;
 
@@ -214,44 +216,37 @@ export default function MayuApp() {
     };
   }, [fbUser]);
 
-  const sendEmailNotification = async (targetRoles, subject, htmlBody) => {
+  // --- FUNCIÓN DE ENVÍO DE WHATSAPP DIRECTO A MAKE.COM ---
+  const sendWhatsAppNotification = async (targetRoles, subject, textBody) => {
     try {
       const uDb = usersRef.current;
-      const emails = Object.values(uDb)
-        .filter(u => targetRoles.includes(u.role))
-        .map(u => u.email)
-        .filter(e => e && e.trim() !== '');
+      const phones = Object.values(uDb)
+        .filter(u => targetRoles.includes(u.role) && u.phone && u.phone.trim() !== '')
+        .map(u => u.phone);
 
-      if (emails.length === 0) return;
+      if (phones.length === 0) return;
 
-      const fullHtml = `
-        <div style="font-family: Arial, sans-serif; color: #333; max-w: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-          <div style="background-color: #899264; padding: 20px; text-align: center;">
-            <h2 style="color: white; margin: 0; letter-spacing: 2px;">MAYU PLATAFORMA</h2>
-          </div>
-          <div style="padding: 30px; background-color: #F8F9F7;">
-            ${htmlBody}
-            <br/><br/>
-            <a href="https://control.imayu.cl" style="display: inline-block; background-color: #DCA75D; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Ir a la Plataforma</a>
-          </div>
-          <div style="background-color: #eee; padding: 15px; text-align: center; font-size: 11px; color: #666;">
-            Este es un mensaje automático de control de proyectos MAYU.
-          </div>
-        </div>
-      `;
+      const fullMessage = `*MAYU PLATAFORMA*\n\n*${subject}*\n\n${textBody}\n\n👉 https://control.imayu.cl\n_Mensaje automático_`;
 
-      await addDoc(collection(db, 'mail'), {
-        to: emails,
-        message: {
-          subject: subject,
-          html: fullHtml
-        }
-      });
+      const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/itdahce3bi319xckrb8ayftu8k7mk3zh";
+
+      for (const phone of phones) {
+        // Enviar directamente a Make.com (Instantáneo)
+        await fetch(MAKE_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: phone,
+            message: fullMessage
+          })
+        });
+      }
     } catch (error) {
-      console.error("Error al encolar el correo:", error);
+      console.error("Error al enviar WhatsApp vía Webhook:", error);
     }
   };
 
+  // --- CRON JOB FRONTEND (Recordatorios cada 24 hrs si lleva >72 hrs) ---
   useEffect(() => {
     if (!isDataLoaded || !currentUser) return;
 
@@ -284,14 +279,10 @@ export default function MayuApp() {
                   const pendingRoles = requiredRoles.filter(r => docItem.approvals[r] !== 'Aprobado' && docItem.approvals[r] !== 'Aprobado con obs.');
 
                   if (pendingRoles.length > 0) {
-                    sendEmailNotification(
+                    sendWhatsAppNotification(
                       pendingRoles,
-                      `🔴 ALERTA URGENTE: Aprobación Atrasada - ${docItem.name}`,
-                      `<h3 style="color: #d32f2f;">Aprobación Atrasada - Recordatorio Automático</h3>
-                       <p>Hola,</p>
-                       <p>El documento <strong>${docItem.name}</strong> del proyecto <strong>${p.name}</strong> lleva más de 72 horas esperando tu revisión obligatoria.</p>
-                       <p>Esto está bloqueando el avance del proyecto. Por favor ingresa a la plataforma inmediatamente para gestionarlo.</p>
-                       <p><em>Este correo se repetirá cada 24 horas hasta que sea aprobado.</em></p>`
+                      `🔴 ALERTA URGENTE: Aprobación Atrasada`,
+                      `El documento *${docItem.name}* del proyecto *${p.name}* lleva más de 72 horas esperando tu revisión obligatoria.\n\nEsto está bloqueando el avance del proyecto. Por favor gestiónalo de inmediato.\n\n_Este recordatorio se repetirá cada 24 horas._`
                     );
                     
                     docItem.lastReminderSentAt = now.toISOString();
@@ -372,13 +363,10 @@ export default function MayuApp() {
       document.history = [{date: nowString, user: currentUser.name, action: `Cargó ${document.version}`}, ...document.history];
       
       const requiredRoles = APPROVERS[areaKey.toUpperCase()] || [];
-      sendEmailNotification(
+      sendWhatsAppNotification(
         requiredRoles,
-        `NUEVO DOCUMENTO PARA REVISIÓN: ${document.name} - ${p.name}`,
-        `<h3>Se requiere tu aprobación</h3>
-         <p>Hola,</p>
-         <p>Se ha subido una nueva versión (${document.version}) del documento <strong>${document.name}</strong> para el proyecto <strong>${p.name}</strong>.</p>
-         <p>Por favor ingresa a la plataforma para revisarlo y firmarlo.</p>`
+        `NUEVO DOCUMENTO PARA REVISIÓN`,
+        `Se ha generado la versión ${document.version} del entregable *${document.name}* para el proyecto *${p.name}*.\n\nPor favor ingresa a la plataforma para revisarlo y firmarlo.`
       );
     } 
     else if (action === 'DELETE_FILE') {
@@ -416,11 +404,10 @@ export default function MayuApp() {
         const hasObs = requiredApprovers.some(appr => document.approvals[appr] === 'Aprobado con obs.');
         document.status = hasObs ? 'Aprobado con observaciones' : 'Aprobado';
         document.reviewStartDate = null; 
-        sendEmailNotification(
+        sendWhatsAppNotification(
           [document.uploaderRole, 'Project Manager', 'Administrador del sistema'],
-          `✅ APROBADO: ${document.name} - ${p.name}`,
-          `<h3 style="color: #4CAF50;">Documento Aprobado Exitosamente</h3>
-           <p>El documento <strong>${document.name}</strong> (Versión ${document.version}) del proyecto <strong>${p.name}</strong> ha recibido todas las firmas requeridas y está oficialmente Aprobado.</p>`
+          `✅ DOCUMENTO APROBADO`,
+          `El documento *${document.name}* (Versión ${document.version}) del proyecto *${p.name}* ha recibido todas las firmas requeridas y está oficialmente Aprobado.`
         );
       }
       else if (anyRejected) document.status = 'Observado';
@@ -456,8 +443,6 @@ export default function MayuApp() {
       const fileExtension = file.name.split('.').pop();
       const storageRef = ref(storage, `chk_projects/${projectId}/${areaKey}/${docId}_${Date.now()}.${fileExtension}`);
       
-      // CAMBIO IMPORTANTE: Se reemplazó uploadBytesResumable por uploadBytes 
-      // para evitar problemas de conexión o bloqueo de chunks en el navegador.
       await uploadBytes(storageRef, file);
       const downloadUrl = await getDownloadURL(storageRef);
 
@@ -490,13 +475,10 @@ export default function MayuApp() {
       if (selectedProject?.id === projectId) setSelectedProject(updatedProject);
 
       const requiredRoles = APPROVERS[areaKey.toUpperCase()] || [];
-      sendEmailNotification(
+      sendWhatsAppNotification(
         requiredRoles,
-        `NUEVO ARCHIVO PARA REVISIÓN: ${document.name} - ${p.name}`,
-        `<h3>Se requiere tu aprobación</h3>
-         <p>Hola,</p>
-         <p>Se ha subido un archivo real (Versión ${document.version}) para el documento <strong>${document.name}</strong> del proyecto <strong>${p.name}</strong>.</p>
-         <p>Por favor ingresa a la plataforma para revisarlo y firmarlo.</p>`
+        `NUEVO ARCHIVO PARA REVISIÓN`,
+        `Se ha subido un archivo físico (Versión ${document.version}) para el entregable *${document.name}* del proyecto *${p.name}*.\n\nPor favor ingresa a la plataforma para revisarlo y firmarlo.`
       );
 
     } catch (error) {
@@ -708,6 +690,7 @@ export default function MayuApp() {
     }, 2000);
   };
 
+  // --- CALCULO GANTT CHART ---
   const ganttData = useMemo(() => {
     let globalMin = null;
     let globalMax = null;
@@ -731,7 +714,7 @@ export default function MayuApp() {
 
       if (pMin && pMax) {
         if (pMin === pMax) {
-           pMax += 24 * 60 * 60 * 1000; // Agregar 1 día mínimo para que se dibuje
+           pMax += 24 * 60 * 60 * 1000; 
         }
         if (!globalMin || pMin < globalMin) globalMin = pMin;
         if (!globalMax || pMax > globalMax) globalMax = pMax;
@@ -747,7 +730,6 @@ export default function MayuApp() {
 
     if (projectTimelines.length === 0 || !globalMin || !globalMax) return null;
 
-    // Padding de 1 mes antes y después para mejor visualización
     const startTimeline = new Date(globalMin);
     startTimeline.setMonth(startTimeline.getMonth() - 1);
     startTimeline.setDate(1);
@@ -830,7 +812,6 @@ export default function MayuApp() {
       <div className="min-h-screen bg-[#F3F4EF] flex items-center justify-center p-4 font-sans text-slate-800">
         <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden animate-fade-in border border-slate-200">
           
-          {/* MAYU Brands Header */}
           <div className="h-2 w-full flex">
             <div className="flex-1 bg-[#DCA75D]"></div>
             <div className="flex-1 bg-[#788A87]"></div>
@@ -951,7 +932,7 @@ export default function MayuApp() {
 
         <main className="flex-1 p-6 overflow-y-auto">
           
-          {/* VIEW: DASHBOARD & PROJECTS (Shared Table Render) */}
+          {/* VIEW: DASHBOARD & PROJECTS */}
           {(view === 'dashboard' || view === 'projects') && (
             <div className="max-w-5xl mx-auto animate-fade-in">
               <div className="flex justify-between items-center mb-6">
@@ -1014,7 +995,6 @@ export default function MayuApp() {
                         a.docs.forEach(d => { 
                           tDocs++; 
                           if(d.status === 'Aprobado' || d.status === 'Aprobado con observaciones') aDocs++; 
-                          // Coleccionar aprobadores para el dashboard
                           d.history.forEach(h => {
                             if (h.action.includes('Aprobó')) approverNames.add(h.user);
                           });
@@ -1046,7 +1026,6 @@ export default function MayuApp() {
                                 <div className={`h-full ${pct === 100 ? 'bg-[#899264]' : 'bg-[#DCA75D]'}`} style={{width: `${pct}%`}}></div>
                               </div>
                             </div>
-                            {/* MURO DE APROBADORES */}
                             {approverNames.size > 0 && (
                               <div className="flex items-center mt-1 -space-x-1.5" title={`Aprobado por: ${Array.from(approverNames).join(', ')}`}>
                                 {approversArr.map((name, i) => (
@@ -1110,7 +1089,7 @@ export default function MayuApp() {
                   <div className="flex flex-col items-center justify-center h-full text-slate-500 p-16 text-center my-auto">
                     <CalendarDays size={64} className="mb-4 opacity-20" />
                     <p className="font-bold text-xl text-slate-600 mb-2">No hay suficientes datos</p>
-                    <p className="text-sm max-w-md">Para generar la Carta Gantt visual, debes asignar "Fechas Límite" (ícono de lápiz) a los documentos dentro de las fichas de los proyectos.</p>
+                    <p className="text-sm max-w-md">Para generar la Carta Gantt visual, debes asignar "Fechas Límite" a los documentos de los proyectos.</p>
                   </div>
                 ) : (
                   <div className="flex-1 overflow-auto bg-white custom-scrollbar pb-8">
@@ -1134,7 +1113,7 @@ export default function MayuApp() {
                         {ganttData.projectTimelines.map((project) => {
                           const leftPx = ((project.startMs - ganttData.startTimeline.getTime()) / ganttData.totalMs) * (ganttData.months.length * 150);
                           let widthPx = ((project.endMs - project.startMs) / ganttData.totalMs) * (ganttData.months.length * 150);
-                          if (widthPx < 28) widthPx = 28; // Ancho mínimo visual
+                          if (widthPx < 28) widthPx = 28; 
 
                           return (
                             <div key={project.id} className="flex border-b border-slate-100 hover:bg-slate-50 group relative z-10 transition-colors h-16">
