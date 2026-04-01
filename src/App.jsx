@@ -247,12 +247,15 @@ export default function MayuApp() {
       const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/itdahce3bi319xckrb8ayftu8k7mk3zh";
 
       for (const phone of phones) {
+        // LIMPIEZA AUTOMÁTICA: Quitar el '+' o espacios para que Whapi lo acepte sin errores
+        const cleanPhone = phone.replace(/\D/g, '');
+
         // Enviar directamente a Make.com (Instantáneo)
         await fetch(MAKE_WEBHOOK_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            to: phone,
+            to: cleanPhone,
             message: fullMessage
           })
         });
