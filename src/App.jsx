@@ -230,15 +230,27 @@ export default function MayuApp() {
   const sendWhatsAppNotification = async (targetRoles, subject, textBody) => {
     try {
       const uDb = usersRef.current;
-      const phones = Object.values(uDb)
-        .filter(u => targetRoles.includes(u.role) && u.phone && u.phone.trim() !== '')
-        .map(u => u.phone);
+      let phones = [];
 
-      console.log("Roles destino:", targetRoles);
-      console.log("Teléfonos encontrados en BD:", phones);
+      // 1. Extraer teléfonos de los roles (ignorar los falsos 00000000)
+      Object.values(uDb).forEach(u => {
+        if (targetRoles.includes(u.role) && u.phone && u.phone.trim() !== '' && !u.phone.includes('00000000')) {
+          phones.push(u.phone);
+        }
+      });
+
+      // 2. Extraer IDs de grupos directamente si se pasaron en el arreglo
+      targetRoles.forEach(roleOrId => {
+        if (roleOrId.includes('@g.us')) {
+          phones.push(roleOrId);
+        }
+      });
+
+      // Quitar duplicados por seguridad
+      phones = [...new Set(phones)];
 
       if (phones.length === 0) {
-         console.warn("ALERTA: Se canceló el Webhook porque no hay teléfonos configurados para estos roles.");
+         console.warn("ALERTA: Se canceló el Webhook porque no hay teléfonos reales ni grupos configurados.");
          return;
       }
 
@@ -247,8 +259,8 @@ export default function MayuApp() {
       const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/itdahce3bi319xckrb8ayftu8k7mk3zh";
 
       for (const phone of phones) {
-        // LIMPIEZA AUTOMÁTICA: Quitar el '+' o espacios para que Whapi lo acepte sin errores
-        const cleanPhone = phone.replace(/\D/g, '');
+        // LIMPIEZA INTELIGENTE: Si es grupo mantiene el formato (letras y guiones). Si es teléfono normal, deja solo números.
+        const cleanPhone = phone.includes('@g.us') ? phone.replace(/\s+/g, '') : phone.replace(/\D/g, '');
 
         // Enviar directamente a Make.com (Instantáneo)
         await fetch(MAKE_WEBHOOK_URL, {
@@ -326,8 +338,8 @@ export default function MayuApp() {
                 const hoursSinceLastDeadlineReminder = lastDeadlineReminder ? (now - lastDeadlineReminder) / (1000 * 60 * 60) : 999;
                 
                 if (!lastDeadlineReminder || hoursSinceLastDeadlineReminder >= 24) {
-                  // Notificar al responsable directo de subirlo y al Project Manager (El "Grupo de responsables")
-                  const targetRoles = [docItem.uploaderRole, 'Project Manager']; 
+                  // Notificar al responsable directo, al PM, y al GRUPO DE WHATSAPP
+                  const targetRoles = [docItem.uploaderRole, 'Project Manager', '120363405205015820@g.us']; 
                   const uniqueRoles = [...new Set(targetRoles)];
                   
                   sendWhatsAppNotification(
