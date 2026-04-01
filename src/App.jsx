@@ -22,7 +22,6 @@ import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'fire
 
 // --- FIREBASE INIT (Cerebro Central: crm---mayu) ---
 const firebaseConfig = {
-  // Dividido para evitar falsos positivos en el escáner de Netlify
   apiKey: ['AI', 'za', 'SyAsVgf5GRRuf', '-hNt9MxpCJ', 'ce6wdb9hUB70'].join(''),
   authDomain: "crm---mayu.firebaseapp.com",
   projectId: "crm---mayu",
@@ -53,20 +52,20 @@ const ROLES = [
   'Encargado de Calidad'
 ];
 
-// Usuarios iniciales con soporte para teléfonos (WhatsApp)
+// Usuarios con TODOS sus números reales integrados (Formato WhatsApp)
 const MOCK_USERS = {
   'admin': { password: '123', name: 'Administrador IT', role: 'Administrador del sistema', email: 'admin@imayu.cl', phone: '+56900000000' },
-  'fjescudero': { password: '123', name: 'Felix Escudero', role: 'Gerente General', email: 'fjescudero@imayu.cl', phone: '+56900000000' },
-  'vescudero': { password: '123', name: 'Valentina Escudero', role: 'Gerente de Administración y Finanzas', email: 'vescudero@imayu.cl', phone: '+56900000000' },
-  'mepelman': { password: '123', name: 'Martin Epelman', role: 'Gerente de I+D y Producción', email: 'm.epelman@imayu.cl', phone: '+56900000000' },
-  'fescudero': { password: '123', name: 'Felix Escudero Vargas', role: 'Gerente Comercial', email: 'fescudero@imayu.cl', phone: '+56900000000' },
-  'clecaros': { password: '123', name: 'Carlos Lecaros', role: 'Gerente de Operaciones', email: 'clecaros@imayu.cl', phone: '+56900000000' },
-  'efernandez': { password: '123', name: 'Emilio Fernandez', role: 'Subgerente Comercial', email: 'efernandez@imayu.cl', phone: '+56900000000' },
-  'jsantibanez': { password: '123', name: 'Jose Santibañez', role: 'Project Manager', email: 'jsantibanez@imayu.cl', phone: '+56900000000' },
+  'fjescudero': { password: '123', name: 'Felix Escudero', role: 'Gerente General', email: 'fjescudero@imayu.cl', phone: '+56991596382' },
+  'vescudero': { password: '123', name: 'Valentina Escudero', role: 'Gerente de Administración y Finanzas', email: 'vescudero@imayu.cl', phone: '+56991297299' },
+  'mepelman': { password: '123', name: 'Martin Epelman', role: 'Gerente de I+D y Producción', email: 'm.epelman@imayu.cl', phone: '+56951894132' },
+  'fescudero': { password: '123', name: 'Felix Escudero Vargas', role: 'Gerente Comercial', email: 'fescudero@imayu.cl', phone: '+56991596382' },
+  'clecaros': { password: '123', name: 'Carlos Lecaros', role: 'Gerente de Operaciones', email: 'clecaros@imayu.cl', phone: '+56978543925' },
+  'efernandez': { password: '123', name: 'Emilio Fernandez', role: 'Subgerente Comercial', email: 'efernandez@imayu.cl', phone: '+56989291925' },
+  'jsantibanez': { password: '123', name: 'Jose Santibañez', role: 'Project Manager', email: 'jsantibanez@imayu.cl', phone: '+56965863356' },
   'cquintana': { password: '123', name: 'Carlos Quintana', role: 'Equipo de Diseño', email: 'cquintana@imayu.cl', phone: '+56900000000' },
   'dcuevas': { password: '123', name: 'Daniela Cuevas', role: 'Equipo de Diseño', email: 'dcuevas@imayu.cl', phone: '+56900000000' },
-  'fjerez': { password: '123', name: 'Felipe Jerez', role: 'Jefe de Producción', email: 'fjerez@imayu.cl', phone: '+56900000000' },
-  'groman': { password: '123', name: 'Gabriel Roman', role: 'Jefe de Logística', email: 'groman@imayu.cl', phone: '+56900000000' },
+  'fjerez': { password: '123', name: 'Felipe Jerez', role: 'Jefe de Producción', email: 'fjerez@imayu.cl', phone: '+56988275485' },
+  'groman': { password: '123', name: 'Gabriel Roman', role: 'Jefe de Logística', email: 'groman@imayu.cl', phone: '+56974490582' },
   'mhernandez': { password: '123', name: 'Mauricio Hernandez', role: 'Jefe de Bodega', email: 'mhernandez@imayu.cl', phone: '+56900000000' },
   'jquevedo': { password: '123', name: 'Jorge Quevedo', role: 'Encargado de Calidad', email: 'jquevedo@imayu.cl', phone: '+56900000000' }
 };
@@ -128,7 +127,7 @@ export default function MayuApp() {
   
   const [usersDb, setUsersDb] = useState({});
   const [projects, setProjects] = useState([]);
-  const [crmProjects, setCrmProjects] = useState([]); // Proyectos del CRM
+  const [crmProjects, setCrmProjects] = useState([]); 
   
   const [currentUser, setCurrentUser] = useState(null);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
@@ -180,11 +179,8 @@ export default function MayuApp() {
   useEffect(() => {
     if (!fbUser) return;
 
-    // Colecciones del Checklist
     const projectsColRef = collection(db, 'chk_projects');
     const usersColRef = collection(db, 'chk_users');
-    
-    // Colección del CRM
     const crmProjectsColRef = collection(db, 'projects');
 
     const unsubsProjects = onSnapshot(projectsColRef, (snapshot) => {
@@ -201,10 +197,12 @@ export default function MayuApp() {
         snapshot.docs.forEach(d => { 
           let userData = d.data();
           
-          // AUTO-REPARACIÓN: Si el usuario de la BD no tiene teléfono, lo trae de la lista de inicio y actualiza la BD
-          if (!userData.phone && MOCK_USERS[d.id]) {
-             userData.phone = MOCK_USERS[d.id].phone;
-             setDoc(doc(usersColRef, d.id), userData); 
+          // AUTO-REPARACIÓN AVANZADA (Actualizada para forzar los números reales)
+          if (MOCK_USERS[d.id] && MOCK_USERS[d.id].phone !== '+56900000000') {
+             if (userData.phone !== MOCK_USERS[d.id].phone) {
+                 userData.phone = MOCK_USERS[d.id].phone;
+                 setDoc(doc(usersColRef, d.id), userData); 
+             }
           }
           
           loadedUsers[d.id] = userData; 
@@ -232,14 +230,14 @@ export default function MayuApp() {
       const uDb = usersRef.current;
       let phones = [];
 
-      // 1. Extraer teléfonos de los roles (ignorar los falsos 00000000)
+      // 1. Extraer teléfonos de los roles (IGNORANDO LOS FALSOS 0000)
       Object.values(uDb).forEach(u => {
         if (targetRoles.includes(u.role) && u.phone && u.phone.trim() !== '' && !u.phone.includes('00000000')) {
           phones.push(u.phone);
         }
       });
 
-      // 2. Extraer IDs de grupos directamente si se pasaron en el arreglo
+      // 2. Extraer IDs de grupos directamente
       targetRoles.forEach(roleOrId => {
         if (roleOrId.includes('@g.us')) {
           phones.push(roleOrId);
@@ -250,19 +248,17 @@ export default function MayuApp() {
       phones = [...new Set(phones)];
 
       if (phones.length === 0) {
-         console.warn("ALERTA: Se canceló el Webhook porque no hay teléfonos reales ni grupos configurados.");
+         console.warn("ALERTA: Se canceló el Webhook porque no hay teléfonos reales configurados para el envío.");
          return;
       }
 
       const fullMessage = `*MAYU PLATAFORMA*\n\n*${subject}*\n\n${textBody}\n\n👉 https://control.imayu.cl\n_Mensaje automático_`;
-
       const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/itdahce3bi319xckrb8ayftu8k7mk3zh";
 
       for (const phone of phones) {
-        // LIMPIEZA INTELIGENTE: Si es grupo mantiene el formato (letras y guiones). Si es teléfono normal, deja solo números.
+        // LIMPIEZA INTELIGENTE
         const cleanPhone = phone.includes('@g.us') ? phone.replace(/\s+/g, '') : phone.replace(/\D/g, '');
 
-        // Enviar directamente a Make.com (Instantáneo)
         await fetch(MAKE_WEBHOOK_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -277,11 +273,9 @@ export default function MayuApp() {
     }
   };
 
-  // --- CRON JOB FRONTEND (Recordatorios cada 24 hrs si lleva >72 hrs O si venció la fecha) ---
+  // --- CRON JOB FRONTEND ---
   useEffect(() => {
     if (!isDataLoaded || !currentUser) return;
-
-    // Solo el Admin o PM ejecutan las rutinas de tiempo para evitar múltiples ejecuciones simultáneas
     if (currentUser.role !== 'Administrador del sistema' && currentUser.role !== 'Project Manager') return;
 
     const checkReminders = async () => {
@@ -299,7 +293,6 @@ export default function MayuApp() {
         Object.keys(p.areas).forEach(areaKey => {
           p.areas[areaKey].docs.forEach(docItem => {
             
-            // 1. ALERTA DE REVISIÓN ATRASADA (> 72 hrs en revisión sin firmas completas)
             if (docItem.status === 'En revisión' && docItem.reviewStartDate) {
               const startDate = new Date(docItem.reviewStartDate);
               const hoursSinceStart = (now - startDate) / (1000 * 60 * 60);
@@ -318,7 +311,6 @@ export default function MayuApp() {
                       `🔴 ALERTA URGENTE: Aprobación Atrasada`,
                       `El documento *${docItem.name}* del proyecto *${p.name}* lleva más de 72 horas esperando tu revisión obligatoria.\n\nEsto está bloqueando el avance del proyecto. Por favor gestiónalo de inmediato.\n\n_Este recordatorio se repetirá cada 24 horas._`
                     );
-                    
                     docItem.lastReminderSentAt = now.toISOString();
                     projChanged = true;
                   }
@@ -326,19 +318,15 @@ export default function MayuApp() {
               }
             }
 
-            // 2. ALERTA DE FECHA LÍMITE VENCIDA (Pendiente sin archivo subido)
             if (docItem.status === 'Pendiente' && docItem.deadline) {
               const [year, month, day] = docItem.deadline.split('-');
-              // Compara contra las 23:59:59 de la fecha límite establecida
               const dDate = new Date(Number(year), Number(month) - 1, Number(day), 23, 59, 59);
               
               if (now > dDate) {
-                // ¡La fecha venció y no lo han subido!
                 const lastDeadlineReminder = docItem.lastDeadlineReminderSentAt ? new Date(docItem.lastDeadlineReminderSentAt) : null;
                 const hoursSinceLastDeadlineReminder = lastDeadlineReminder ? (now - lastDeadlineReminder) / (1000 * 60 * 60) : 999;
                 
                 if (!lastDeadlineReminder || hoursSinceLastDeadlineReminder >= 24) {
-                  // Notificar al responsable directo, al PM, y al GRUPO DE WHATSAPP
                   const targetRoles = [docItem.uploaderRole, 'Project Manager', '120363405205015820@g.us']; 
                   const uniqueRoles = [...new Set(targetRoles)];
                   
@@ -347,13 +335,11 @@ export default function MayuApp() {
                     `⚠️ ALERTA: FECHA LÍMITE VENCIDA`,
                     `El documento *${docItem.name}* del proyecto *${p.name}* tenía como fecha límite el ${docItem.deadline.split('-').reverse().join('-')}.\n\nAún no se ha subido el archivo correspondiente en la plataforma. Por favor, gestiónalo a la brevedad.\n\n_Este recordatorio se repetirá cada 24 horas hasta que se suba el archivo o se modifique la fecha._`
                   );
-                  
                   docItem.lastDeadlineReminderSentAt = now.toISOString();
                   projChanged = true;
                 }
               }
             }
-
           });
         });
 
@@ -364,7 +350,6 @@ export default function MayuApp() {
       }
     };
 
-    // Revisión rápida al entrar a los 5 segundos, luego cada hora.
     const initialTimer = setTimeout(checkReminders, 5000);
     const interval = setInterval(checkReminders, 3600000);
 
@@ -424,7 +409,7 @@ export default function MayuApp() {
       document.approvals = {}; 
       document.reviewStartDate = now.toISOString(); 
       document.lastReminderSentAt = null;
-      document.lastDeadlineReminderSentAt = null; // Reseteado al subir
+      document.lastDeadlineReminderSentAt = null; 
       document.history = [{date: nowString, user: currentUser.name, action: `Cargó ${document.version}`}, ...document.history];
       
       const requiredRoles = APPROVERS[areaKey.toUpperCase()] || [];
@@ -529,7 +514,7 @@ export default function MayuApp() {
       document.originalFileName = file.name;
       document.reviewStartDate = now.toISOString(); 
       document.lastReminderSentAt = null;
-      document.lastDeadlineReminderSentAt = null; // Reseteado al subir el archivo físico
+      document.lastDeadlineReminderSentAt = null; 
       document.history = [{date: nowString, user: currentUser.name, action: `Cargó ${document.version} (${file.name})`}, ...document.history];
       
       newAreas[areaKey].docs[docIndex] = document;
@@ -573,7 +558,7 @@ export default function MayuApp() {
 
     document.deadline = newDate;
     document.deadlineVersion = newV;
-    document.lastDeadlineReminderSentAt = null; // Si le dan más tiempo, se borra el recordatorio de atraso
+    document.lastDeadlineReminderSentAt = null; 
 
     const formattedDate = newDate ? newDate.split('-').reverse().join('-') : 'Ninguna';
     const nowString = new Date().toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' });
