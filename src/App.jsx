@@ -198,7 +198,17 @@ export default function MayuApp() {
         Object.entries(MOCK_USERS).forEach(([id, u]) => setDoc(doc(usersColRef, id), u));
       } else {
         const loadedUsers = {};
-        snapshot.docs.forEach(d => { loadedUsers[d.id] = d.data(); });
+        snapshot.docs.forEach(d => { 
+          let userData = d.data();
+          
+          // AUTO-REPARACIÓN: Si el usuario de la BD no tiene teléfono, lo trae de la lista de inicio y actualiza la BD
+          if (!userData.phone && MOCK_USERS[d.id]) {
+             userData.phone = MOCK_USERS[d.id].phone;
+             setDoc(doc(usersColRef, d.id), userData); 
+          }
+          
+          loadedUsers[d.id] = userData; 
+        });
         setUsersDb(loadedUsers);
         setIsDataLoaded(true);
       }
@@ -224,7 +234,13 @@ export default function MayuApp() {
         .filter(u => targetRoles.includes(u.role) && u.phone && u.phone.trim() !== '')
         .map(u => u.phone);
 
-      if (phones.length === 0) return;
+      console.log("Roles destino:", targetRoles);
+      console.log("Teléfonos encontrados en BD:", phones);
+
+      if (phones.length === 0) {
+         console.warn("ALERTA: Se canceló el Webhook porque no hay teléfonos configurados para estos roles.");
+         return;
+      }
 
       const fullMessage = `*MAYU PLATAFORMA*\n\n*${subject}*\n\n${textBody}\n\n👉 https://control.imayu.cl\n_Mensaje automático_`;
 
@@ -246,10 +262,11 @@ export default function MayuApp() {
     }
   };
 
-  // --- CRON JOB FRONTEND (Recordatorios cada 24 hrs si lleva >72 hrs) ---
+  // --- CRON JOB FRONTEND (Recordatorios cada 24 hrs si lleva >72 hrs O si venció la fecha) ---
   useEffect(() => {
     if (!isDataLoaded || !currentUser) return;
 
+    // Solo el Admin o PM ejecutan las rutinas de tiempo para evitar múltiples ejecuciones simultáneas
     if (currentUser.role !== 'Administrador del sistema' && currentUser.role !== 'Project Manager') return;
 
     const checkReminders = async () => {
@@ -266,6 +283,8 @@ export default function MayuApp() {
 
         Object.keys(p.areas).forEach(areaKey => {
           p.areas[areaKey].docs.forEach(docItem => {
+            
+            // 1. ALERTA DE REVISIÓN ATRASADA (> 72 hrs en revisión sin firmas completas)
             if (docItem.status === 'En revisión' && docItem.reviewStartDate) {
               const startDate = new Date(docItem.reviewStartDate);
               const hoursSinceStart = (now - startDate) / (1000 * 60 * 60);
@@ -291,6 +310,35 @@ export default function MayuApp() {
                 }
               }
             }
+
+            // 2. ALERTA DE FECHA LÍMITE VENCIDA (Pendiente sin archivo subido)
+            if (docItem.status === 'Pendiente' && docItem.deadline) {
+              const [year, month, day] = docItem.deadline.split('-');
+              // Compara contra las 23:59:59 de la fecha límite establecida
+              const dDate = new Date(Number(year), Number(month) - 1, Number(day), 23, 59, 59);
+              
+              if (now > dDate) {
+                // ¡La fecha venció y no lo han subido!
+                const lastDeadlineReminder = docItem.lastDeadlineReminderSentAt ? new Date(docItem.lastDeadlineReminderSentAt) : null;
+                const hoursSinceLastDeadlineReminder = lastDeadlineReminder ? (now - lastDeadlineReminder) / (1000 * 60 * 60) : 999;
+                
+                if (!lastDeadlineReminder || hoursSinceLastDeadlineReminder >= 24) {
+                  // Notificar al responsable directo de subirlo y al Project Manager (El "Grupo de responsables")
+                  const targetRoles = [docItem.uploaderRole, 'Project Manager']; 
+                  const uniqueRoles = [...new Set(targetRoles)];
+                  
+                  sendWhatsAppNotification(
+                    uniqueRoles,
+                    `⚠️ ALERTA: FECHA LÍMITE VENCIDA`,
+                    `El documento *${docItem.name}* del proyecto *${p.name}* tenía como fecha límite el ${docItem.deadline.split('-').reverse().join('-')}.\n\nAún no se ha subido el archivo correspondiente en la plataforma. Por favor, gestiónalo a la brevedad.\n\n_Este recordatorio se repetirá cada 24 horas hasta que se suba el archivo o se modifique la fecha._`
+                  );
+                  
+                  docItem.lastDeadlineReminderSentAt = now.toISOString();
+                  projChanged = true;
+                }
+              }
+            }
+
           });
         });
 
@@ -301,6 +349,7 @@ export default function MayuApp() {
       }
     };
 
+    // Revisión rápida al entrar a los 5 segundos, luego cada hora.
     const initialTimer = setTimeout(checkReminders, 5000);
     const interval = setInterval(checkReminders, 3600000);
 
@@ -360,6 +409,7 @@ export default function MayuApp() {
       document.approvals = {}; 
       document.reviewStartDate = now.toISOString(); 
       document.lastReminderSentAt = null;
+      document.lastDeadlineReminderSentAt = null; // Reseteado al subir
       document.history = [{date: nowString, user: currentUser.name, action: `Cargó ${document.version}`}, ...document.history];
       
       const requiredRoles = APPROVERS[areaKey.toUpperCase()] || [];
@@ -464,6 +514,7 @@ export default function MayuApp() {
       document.originalFileName = file.name;
       document.reviewStartDate = now.toISOString(); 
       document.lastReminderSentAt = null;
+      document.lastDeadlineReminderSentAt = null; // Reseteado al subir el archivo físico
       document.history = [{date: nowString, user: currentUser.name, action: `Cargó ${document.version} (${file.name})`}, ...document.history];
       
       newAreas[areaKey].docs[docIndex] = document;
@@ -507,6 +558,7 @@ export default function MayuApp() {
 
     document.deadline = newDate;
     document.deadlineVersion = newV;
+    document.lastDeadlineReminderSentAt = null; // Si le dan más tiempo, se borra el recordatorio de atraso
 
     const formattedDate = newDate ? newDate.split('-').reverse().join('-') : 'Ninguna';
     const nowString = new Date().toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' });
