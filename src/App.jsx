@@ -268,7 +268,7 @@ export default function MayuApp() {
          return;
       }
 
-      const fullMessage = `*MAYU PLATAFORMA*\n\n*${subject}*\n\n${textBody}\n\n👉 https://control.imayu.cl\n_Mensaje automático_`;
+      const fullMessage = `*MAYU PLATAFORMA*\n\n*${subject}*\n\n${textBody}\n\n👉 https://control-mayu.netlify.app/\n_Mensaje automático_`;
       const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/itdahce3bi319xckrb8ayftu8k7mk3zh";
 
       for (const phone of phones) {
@@ -461,6 +461,22 @@ export default function MayuApp() {
       if (action === 'REJECT') actionStatus = 'Rechazado';
 
       document.approvals = { ...document.approvals, [role]: actionStatus };
+
+      // --- NUEVAS NOTIFICACIONES DE OBSERVACIONES/RECHAZOS AL UPLOADER ---
+      if (action === 'APPROVE_WITH_OBS') {
+        sendWhatsAppNotification(
+          [document.uploaderRole],
+          `📝 APROBACIÓN CON OBSERVACIONES`,
+          `*${currentUser.name}* ha aprobado con observaciones el documento *${document.name}* (Versión ${document.version}) del proyecto *${p.name}*.\n\n*Comentario:* "${comment}"\n\nPor favor, ingresa a la plataforma para revisar los detalles.`
+        );
+      } else if (action === 'OBSERVE' || action === 'REJECT') {
+        const accionTexto = action === 'OBSERVE' ? 'dejado una observación en' : 'rechazado';
+        sendWhatsAppNotification(
+          [document.uploaderRole],
+          `⚠️ DOCUMENTO ${action === 'OBSERVE' ? 'OBSERVADO' : 'RECHAZADO'}`,
+          `*${currentUser.name}* ha ${accionTexto} el documento *${document.name}* (Versión ${document.version}) del proyecto *${p.name}*.\n\n*Comentario:* "${comment}"\n\nPor favor, corrige el documento y sube una nueva versión.`
+        );
+      }
       
       const requiredApprovers = APPROVERS[areaKey.toUpperCase()];
       const allApproved = requiredApprovers.every(appr => document.approvals[appr] === 'Aprobado' || document.approvals[appr] === 'Aprobado con obs.');
