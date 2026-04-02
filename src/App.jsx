@@ -3,7 +3,7 @@ import {
   LayoutDashboard, FolderKanban, CheckSquare, Clock, AlertCircle, 
   CheckCircle2, XCircle, UploadCloud, Eye, History, MessageSquare, 
   ChevronRight, FileText, UserCircle, PlayCircle, ShieldCheck, LogOut, 
-  Lock, User, Plus, Trash2, Key, Loader, Edit2, CalendarDays, Send, Briefcase
+  Lock, User, Plus, Trash2, Key, Loader, Edit2, CalendarDays, Send, Briefcase, BarChart3
 } from 'lucide-react';
 
 // --- INYECCIÓN AUTOMÁTICA DE ESTILOS (TAILWIND CDN) ---
@@ -124,7 +124,7 @@ export default function MayuApp() {
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [uploadingDocs, setUploadingDocs] = useState({});
   const [isCreatingProject, setIsCreatingProject] = useState(false); 
-  const [testStatus, setTestStatus] = useState(''); // Estado para el botón de prueba
+  const [firebaseError, setFirebaseError] = useState('');
   
   const [usersDb, setUsersDb] = useState({});
   const [projects, setProjects] = useState([]);
@@ -184,25 +184,38 @@ export default function MayuApp() {
     const usersColRef = collection(db, 'chk_users');
     const crmProjectsColRef = collection(db, 'projects');
 
+    const handleFbError = (error) => {
+      console.error(error);
+      if (error.message?.includes('permissions') || error.code === 'permission-denied') {
+        setFirebaseError('⚠️ Acceso denegado a Firebase. Es muy probable que tus Reglas de Seguridad de Firestore hayan expirado (el límite por defecto son 30 días). Ve a la consola de Firebase -> Firestore Database -> Rules, y actualízalas a "allow read, write: if true;".');
+      }
+    };
+
     const unsubsProjects = onSnapshot(projectsColRef, (snapshot) => {
       const loadedProjects = snapshot.docs.map(d => d.data());
       loadedProjects.sort((a, b) => b.id.localeCompare(a.id));
       setProjects(loadedProjects);
-    }, (error) => console.error(error));
+      setFirebaseError(''); // Limpiar error si conecta
+    }, handleFbError);
 
     const unsubsUsers = onSnapshot(usersColRef, (snapshot) => {
       if (snapshot.empty) {
-        Object.entries(MOCK_USERS).forEach(([id, u]) => setDoc(doc(usersColRef, id), u));
+        Object.entries(MOCK_USERS).forEach(([id, u]) => {
+          setDoc(doc(usersColRef, id), u).catch(err => {
+            if(err.code === 'permission-denied') handleFbError(err);
+          });
+        });
       } else {
         const loadedUsers = {};
         snapshot.docs.forEach(d => { 
           let userData = d.data();
           
-          // AUTO-REPARACIÓN AVANZADA (Actualizada para forzar los números reales)
           if (MOCK_USERS[d.id] && MOCK_USERS[d.id].phone !== '+56900000000') {
              if (userData.phone !== MOCK_USERS[d.id].phone) {
                  userData.phone = MOCK_USERS[d.id].phone;
-                 setDoc(doc(usersColRef, d.id), userData); 
+                 setDoc(doc(usersColRef, d.id), userData).catch(err => {
+                   if(err.code === 'permission-denied') handleFbError(err);
+                 }); 
              }
           }
           
@@ -211,12 +224,12 @@ export default function MayuApp() {
         setUsersDb(loadedUsers);
         setIsDataLoaded(true);
       }
-    }, (error) => console.error(error));
+    }, handleFbError);
 
     const unsubsCrmProjects = onSnapshot(crmProjectsColRef, (snapshot) => {
       const loadedCrmProjects = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
       setCrmProjects(loadedCrmProjects);
-    }, (error) => console.error(error));
+    }, handleFbError);
 
     return () => {
       unsubsProjects();
@@ -330,7 +343,7 @@ export default function MayuApp() {
                 const hoursSinceLastDeadlineReminder = lastDeadlineReminder ? (now - lastDeadlineReminder) / (1000 * 60 * 60) : 999;
                 
                 if (!lastDeadlineReminder || hoursSinceLastDeadlineReminder >= 24) {
-                  const targetRoles = [docItem.uploaderRole, 'Project Manager', '120363405205015820@g.us']; 
+                  const targetRoles = [docItem.uploaderRole, 'Subgerente Comercial', '120363405205015820@g.us']; 
                   const uniqueRoles = [...new Set(targetRoles)];
                   
                   sendWhatsAppNotification(
@@ -745,6 +758,103 @@ export default function MayuApp() {
     }, 2000);
   };
 
+  // --- CALCULO RENDIMIENTO POR ÁREA ---
+  const areaStats = useMemo(() => {
+    const stats = {
+      comercial: { name: 'Comercial', uploadTimes: [], deadlineChanges: 0, versions: 0, overdueDocs: 0 },
+      ingenieria: { name: 'Ingeniería y Producción', uploadTimes: [], deadlineChanges: 0, versions: 0, overdueDocs: 0 },
+      operaciones: { name: 'Operaciones', uploadTimes: [], deadlineChanges: 0, versions: 0, overdueDocs: 0 },
+      finanzas: { name: 'Finanzas', uploadTimes: [], deadlineChanges: 0, versions: 0, overdueDocs: 0 },
+      calidad: { name: 'Control de Calidad', uploadTimes: [], deadlineChanges: 0, versions: 0, overdueDocs: 0 }
+    };
+
+    const now = new Date();
+
+    projects.forEach(p => {
+      // Usamos la fecha de creación del proyecto como punto de inicio (Día 0)
+      if (!p.activationDate) return;
+      const [y, m, d] = p.activationDate.split('-');
+      const projStart = new Date(Number(y), Number(m) - 1, Number(d));
+
+      Object.entries(p.areas || {}).forEach(([areaKey, area]) => {
+        const st = stats[areaKey.toLowerCase()];
+        if (!st) return;
+
+        area.docs.forEach(doc => {
+          // 1. Calcular Repactaciones (Cambios de fecha límite)
+          if (doc.deadlineVersion && doc.deadlineVersion > 1) {
+            st.deadlineChanges += (doc.deadlineVersion - 1);
+          }
+          
+          // 2. Calcular Cambios de Versión (Re-procesos)
+          if (doc.version && doc.version !== '-') {
+            const vNum = parseInt(doc.version.replace('V', ''));
+            if (!isNaN(vNum) && vNum > 1) {
+              st.versions += (vNum - 1);
+            }
+          }
+
+          // 3. Calcular Promedio de Demora 1ra Carga
+          const uploadEvents = doc.history.filter(h => h.action.includes('Cargó V1'));
+          if (uploadEvents.length > 0) {
+            const firstUpload = uploadEvents[uploadEvents.length - 1]; // Tomar el más antiguo
+            try {
+              // Parseo seguro de fecha ej: "01-04-2026 15:42" o "1/4/2026, 15:42"
+              const cleanStr = firstUpload.date.replace(',', '').trim();
+              const dateStr = cleanStr.split(' ')[0]; 
+              const parts = dateStr.split(/[-/]/);
+              
+              if (parts.length === 3) {
+                // Formato DD-MM-YYYY o DD/MM/YYYY
+                const uploadDate = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+                const diffTime = uploadDate.getTime() - projStart.getTime();
+                let diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                if (diffDays < 0) diffDays = 0; // Por si suben el mismo día que se activó
+                st.uploadTimes.push(diffDays);
+              }
+            } catch (e) {}
+          }
+
+          // 4. Calcular Documentos Atrasados (Pasados de la fecha límite)
+          if (doc.deadline) {
+            const [dy, dm, dd] = doc.deadline.split('-');
+            const limitDate = new Date(Number(dy), Number(dm) - 1, Number(dd), 23, 59, 59);
+            const isApproved = doc.status === 'Aprobado' || doc.status === 'Aprobado con observaciones';
+
+            if (!isApproved && now > limitDate) {
+              // Atrasado actualmente
+              st.overdueDocs++;
+            } else if (isApproved) {
+              // Verificar en el historial si se aprobó de forma tardía
+              const approvalEvent = doc.history.find(h => h.action.includes('Aprobó'));
+              if (approvalEvent) {
+                try {
+                  const cleanStr = approvalEvent.date.replace(',', '').trim();
+                  const dateStr = cleanStr.split(' ')[0]; 
+                  const parts = dateStr.split(/[-/]/);
+                  if (parts.length === 3) {
+                    const approvalDate = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+                    if (approvalDate > limitDate) {
+                      st.overdueDocs++;
+                    }
+                  }
+                } catch (e) {}
+              }
+            }
+          }
+        });
+      });
+    });
+
+    return Object.values(stats).map(s => {
+      const avgUpload = s.uploadTimes.length > 0 
+        ? Math.round(s.uploadTimes.reduce((a, b) => a + b, 0) / s.uploadTimes.length) 
+        : 0;
+      return { ...s, avgUpload };
+    });
+  }, [projects]);
+
+
   // --- CALCULO GANTT CHART ---
   const ganttData = useMemo(() => {
     let globalMin = null;
@@ -850,6 +960,28 @@ export default function MayuApp() {
     setCurrentUser(null);
     setView('dashboard');
   };
+
+  if (firebaseError) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-lg text-center border-t-4 border-red-500">
+          <AlertCircle size={48} className="text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-slate-800 mb-2">Error de Permisos en Base de Datos</h2>
+          <p className="text-sm text-slate-600 mb-6">{firebaseError}</p>
+          <div className="bg-slate-50 p-4 rounded-lg text-left text-xs font-mono text-slate-700 overflow-x-auto">
+            rules_version = '2';<br/>
+            service cloud.firestore &#123;<br/>
+            &nbsp;&nbsp;match /databases/&#123;database&#125;/documents &#123;<br/>
+            &nbsp;&nbsp;&nbsp;&nbsp;match /&#123;document=**&#125; &#123;<br/>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;allow read, write: if true;<br/>
+            &nbsp;&nbsp;&nbsp;&nbsp;&#125;<br/>
+            &nbsp;&nbsp;&#125;<br/>
+            &#125;
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isDataLoaded) {
     return (
@@ -994,19 +1126,6 @@ export default function MayuApp() {
                 <h2 className="text-2xl font-bold text-slate-800">{view === 'dashboard' ? 'Resumen General' : 'Directorio de Proyectos'}</h2>
                 {['Administrador del sistema', 'Gerente Comercial', 'Subgerente Comercial', 'Project Manager'].includes(role) && (
                   <div className="flex gap-3 items-center">
-                    {testStatus && <span className="text-sm font-bold text-emerald-600 animate-pulse">{testStatus}</span>}
-                    <button 
-                      onClick={async () => {
-                        setTestStatus('Enviando señal...');
-                        await sendWhatsAppNotification(['Subgerente Comercial'], 'PRUEBA DE CONEXIÓN', 'Si recibes esto, el botón de prueba de MAYU logró conectarse con Make.com y Whapi con éxito.');
-                        setTestStatus('¡Señal enviada a Make!');
-                        setTimeout(() => setTestStatus(''), 6000);
-                      }} 
-                      className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors shadow-sm flex items-center gap-2"
-                    >
-                      <Send size={18} /> Forzar Prueba de Conexión
-                    </button>
-
                     <button onClick={() => setShowNewProjectModal(true)} className="bg-[#899264] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#788253] transition-colors shadow-sm flex items-center gap-2">
                       <Plus size={18} /> {view === 'dashboard' ? 'Activar Nuevo Proyecto' : 'Nuevo Proyecto'}
                     </button>
@@ -1015,32 +1134,80 @@ export default function MayuApp() {
               </div>
               
               {view === 'dashboard' && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                    <p className="text-slate-500 text-sm font-medium mb-1">Avance Global Checklist</p>
-                    <div className="flex items-end gap-2">
-                      <h3 className="text-3xl font-bold text-[#899264]">{kpis.progress}%</h3>
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                      <p className="text-slate-500 text-sm font-medium mb-1">Avance Global Checklist</p>
+                      <div className="flex items-end gap-2">
+                        <h3 className="text-3xl font-bold text-[#899264]">{kpis.progress}%</h3>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 mt-3 rounded-full overflow-hidden">
+                        <div className="bg-[#899264] h-full" style={{width: `${kpis.progress}%`}}></div>
+                      </div>
                     </div>
-                    <div className="w-full bg-slate-100 h-2 mt-3 rounded-full overflow-hidden">
-                      <div className="bg-[#899264] h-full" style={{width: `${kpis.progress}%`}}></div>
+                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                      <p className="text-slate-500 text-sm font-medium mb-1">Proyectos Activos</p>
+                      <h3 className="text-3xl font-bold text-slate-800">{projects.length}</h3>
+                    </div>
+                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                      <p className="text-slate-500 text-sm font-medium mb-1">Mis Tareas Pendientes</p>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-3xl font-bold text-[#DCA75D]">{kpis.myPendingApprovals}</h3>
+                        {kpis.myPendingApprovals > 0 && <AlertCircle size={20} className="text-[#DCA75D]" />}
+                      </div>
+                    </div>
+                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                      <p className="text-slate-500 text-sm font-medium mb-1">Observaciones Activas</p>
+                      <h3 className="text-3xl font-bold text-orange-500">{kpis.observations}</h3>
                     </div>
                   </div>
-                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                    <p className="text-slate-500 text-sm font-medium mb-1">Proyectos Activos</p>
-                    <h3 className="text-3xl font-bold text-slate-800">{projects.length}</h3>
+
+                  <h3 className="text-lg font-bold mb-4 text-slate-800 flex items-center gap-2">
+                    <BarChart3 size={20} className="text-[#DCA75D]"/> Rendimiento y Tiempos por Área
+                  </h3>
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm mb-8">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-[#788A87]">
+                        <tr>
+                          <th className="p-4 font-medium">Área</th>
+                          <th className="p-4 font-medium text-center">Tpo. Promedio 1ra Carga</th>
+                          <th className="p-4 font-medium text-center">Repactaciones (Fechas Lím.)</th>
+                          <th className="p-4 font-medium text-center">Nuevas Versiones Subidas</th>
+                          <th className="p-4 font-medium text-center">Docs. Atrasados</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {areaStats.map((stat, idx) => (
+                          <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                            <td className="p-4 font-semibold text-slate-700">{stat.name}</td>
+                            <td className="p-4 text-center">
+                              {stat.uploadTimes.length > 0 ? (
+                                <span className="text-[#899264] font-bold bg-[#899264]/10 px-2.5 py-1 rounded-full">{stat.avgUpload} días</span>
+                              ) : (
+                                <span className="text-slate-400 text-xs italic">Sin datos</span>
+                              )}
+                            </td>
+                            <td className="p-4 text-center">
+                              <span className={`font-medium ${stat.deadlineChanges > 0 ? 'text-orange-600' : 'text-slate-400'}`}>
+                                {stat.deadlineChanges}
+                              </span>
+                            </td>
+                            <td className="p-4 text-center">
+                              <span className={`font-medium ${stat.versions > 0 ? 'text-blue-600' : 'text-slate-400'}`}>
+                                {stat.versions}
+                              </span>
+                            </td>
+                            <td className="p-4 text-center">
+                              <span className={`font-medium ${stat.overdueDocs > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+                                {stat.overdueDocs}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                    <p className="text-slate-500 text-sm font-medium mb-1">Mis Tareas Pendientes</p>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-3xl font-bold text-[#DCA75D]">{kpis.myPendingApprovals}</h3>
-                      {kpis.myPendingApprovals > 0 && <AlertCircle size={20} className="text-[#DCA75D]" />}
-                    </div>
-                  </div>
-                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                    <p className="text-slate-500 text-sm font-medium mb-1">Observaciones Activas</p>
-                    <h3 className="text-3xl font-bold text-orange-500">{kpis.observations}</h3>
-                  </div>
-                </div>
+                </>
               )}
 
               {view === 'dashboard' && <h3 className="text-lg font-bold mb-4 text-slate-800">Proyectos en Preparación</h3>}
@@ -1113,7 +1280,7 @@ export default function MayuApp() {
                           </td>
                           <td className="p-4 text-right">
                             <div className="flex items-center justify-end gap-2 w-full">
-                              {role === 'Administrador del sistema' && (
+                              {['Administrador del sistema', 'Gerente General', 'Subgerente Comercial'].includes(role) && (
                                 <button 
                                   onClick={(e) => { e.stopPropagation(); setProjectToDelete(p); }}
                                   className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded transition-colors"
