@@ -135,6 +135,7 @@ export default function MayuApp() {
   const [loginError, setLoginError] = useState('');
   
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showOverdueModal, setShowOverdueModal] = useState(null); // ESTADO PARA EL MODAL DE ATRASOS
   const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '', error: '', success: '' });
 
   const role = currentUser?.role || '';
@@ -292,7 +293,9 @@ export default function MayuApp() {
   // --- CRON JOB FRONTEND ---
   useEffect(() => {
     if (!isDataLoaded || !currentUser) return;
-    if (currentUser.role !== 'Administrador del sistema' && currentUser.role !== 'Project Manager') return;
+    
+    // 1. Ampliamos los roles que "despiertan" al robot para incluir al Gerente General
+    if (!['Administrador del sistema', 'Project Manager', 'Gerente General'].includes(currentUser.role)) return;
 
     const checkReminders = async () => {
       const currentProjects = projectsRef.current;
@@ -334,7 +337,8 @@ export default function MayuApp() {
               }
             }
 
-            if (docItem.status === 'Pendiente' && docItem.deadline) {
+            // 2. El robot ahora dispara alertas si el documento está Pendiente, Observado o Rechazado
+            if (['Pendiente', 'Observado', 'Rechazado'].includes(docItem.status) && docItem.deadline) {
               const [year, month, day] = docItem.deadline.split('-');
               const dDate = new Date(Number(year), Number(month) - 1, Number(day), 23, 59, 59);
               
@@ -349,7 +353,7 @@ export default function MayuApp() {
                   sendWhatsAppNotification(
                     uniqueRoles,
                     `⚠️ ALERTA: FECHA LÍMITE VENCIDA`,
-                    `El documento *${docItem.name}* del proyecto *${p.name}* tenía como fecha límite el ${docItem.deadline.split('-').reverse().join('-')}.\n\nAún no se ha subido el archivo correspondiente en la plataforma. Por favor, gestiónalo a la brevedad.\n\n_Este recordatorio se repetirá cada 24 horas hasta que se suba el archivo o se modifique la fecha._`
+                    `El documento *${docItem.name}* del proyecto *${p.name}* tenía como fecha límite el ${docItem.deadline.split('-').reverse().join('-')}.\n\nEl documento se encuentra actualmente *${docItem.status}* y requiere tu acción inmediata en la plataforma.\n\n_Este recordatorio se repetirá cada 24 horas hasta que se solucione._`
                   );
                   docItem.lastDeadlineReminderSentAt = now.toISOString();
                   projChanged = true;
@@ -462,7 +466,6 @@ export default function MayuApp() {
 
       document.approvals = { ...document.approvals, [role]: actionStatus };
 
-      // --- NUEVAS NOTIFICACIONES DE OBSERVACIONES/RECHAZOS AL UPLOADER ---
       if (action === 'APPROVE_WITH_OBS') {
         sendWhatsAppNotification(
           [document.uploaderRole],
@@ -777,17 +780,16 @@ export default function MayuApp() {
   // --- CALCULO RENDIMIENTO POR ÁREA ---
   const areaStats = useMemo(() => {
     const stats = {
-      comercial: { name: 'Comercial', uploadTimes: [], deadlineChanges: 0, versions: 0, overdueDocs: 0 },
-      ingenieria: { name: 'Ingeniería y Producción', uploadTimes: [], deadlineChanges: 0, versions: 0, overdueDocs: 0 },
-      operaciones: { name: 'Operaciones', uploadTimes: [], deadlineChanges: 0, versions: 0, overdueDocs: 0 },
-      finanzas: { name: 'Finanzas', uploadTimes: [], deadlineChanges: 0, versions: 0, overdueDocs: 0 },
-      calidad: { name: 'Control de Calidad', uploadTimes: [], deadlineChanges: 0, versions: 0, overdueDocs: 0 }
+      comercial: { name: 'Comercial', uploadTimes: [], deadlineChanges: 0, versions: 0, overdueDocsList: [] },
+      ingenieria: { name: 'Ingeniería y Producción', uploadTimes: [], deadlineChanges: 0, versions: 0, overdueDocsList: [] },
+      operaciones: { name: 'Operaciones', uploadTimes: [], deadlineChanges: 0, versions: 0, overdueDocsList: [] },
+      finanzas: { name: 'Finanzas', uploadTimes: [], deadlineChanges: 0, versions: 0, overdueDocsList: [] },
+      calidad: { name: 'Control de Calidad', uploadTimes: [], deadlineChanges: 0, versions: 0, overdueDocsList: [] }
     };
 
     const now = new Date();
 
     projects.forEach(p => {
-      // Usamos la fecha de creación del proyecto como punto de inicio (Día 0)
       if (!p.activationDate) return;
       const [y, m, d] = p.activationDate.split('-');
       const projStart = new Date(Number(y), Number(m) - 1, Number(d));
@@ -797,12 +799,10 @@ export default function MayuApp() {
         if (!st) return;
 
         area.docs.forEach(doc => {
-          // 1. Calcular Repactaciones (Cambios de fecha límite)
           if (doc.deadlineVersion && doc.deadlineVersion > 1) {
             st.deadlineChanges += (doc.deadlineVersion - 1);
           }
           
-          // 2. Calcular Cambios de Versión (Re-procesos)
           if (doc.version && doc.version !== '-') {
             const vNum = parseInt(doc.version.replace('V', ''));
             if (!isNaN(vNum) && vNum > 1) {
@@ -810,36 +810,41 @@ export default function MayuApp() {
             }
           }
 
-          // 3. Calcular Promedio de Demora 1ra Carga
           const uploadEvents = doc.history.filter(h => h.action.includes('Cargó V1'));
           if (uploadEvents.length > 0) {
-            const firstUpload = uploadEvents[uploadEvents.length - 1]; // Tomar el más antiguo
+            const firstUpload = uploadEvents[uploadEvents.length - 1]; 
             try {
-              // Parseo seguro de fecha ej: "01-04-2026 15:42" o "1/4/2026, 15:42"
               const cleanStr = firstUpload.date.replace(',', '').trim();
               const dateStr = cleanStr.split(' ')[0]; 
               const parts = dateStr.split(/[-/]/);
-              
               if (parts.length === 3) {
-                // Formato DD-MM-YYYY o DD/MM/YYYY
                 const uploadDate = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
                 const diffTime = uploadDate.getTime() - projStart.getTime();
                 let diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                if (diffDays < 0) diffDays = 0; // Por si suben el mismo día que se activó
+                if (diffDays < 0) diffDays = 0; 
                 st.uploadTimes.push(diffDays);
               }
             } catch (e) {}
           }
 
-          // 4. Calcular Documentos Atrasados (Pasados de la fecha límite)
+          // 4. Calcular Documentos Atrasados (Pasados de la fecha límite) - CON DETALLE
           if (doc.deadline) {
             const [dy, dm, dd] = doc.deadline.split('-');
             const limitDate = new Date(Number(dy), Number(dm) - 1, Number(dd), 23, 59, 59);
             const isApproved = doc.status === 'Aprobado' || doc.status === 'Aprobado con observaciones';
+            
+            const overdueInfo = {
+              projectName: p.name,
+              docName: doc.name,
+              version: doc.version,
+              deadline: doc.deadline,
+              uploaderRole: doc.uploaderRole,
+              status: doc.status
+            };
 
             if (!isApproved && now > limitDate) {
               // Atrasado actualmente
-              st.overdueDocs++;
+              st.overdueDocsList.push(overdueInfo);
             } else if (isApproved) {
               // Verificar en el historial si se aprobó de forma tardía
               const approvalEvent = doc.history.find(h => h.action.includes('Aprobó'));
@@ -851,7 +856,7 @@ export default function MayuApp() {
                   if (parts.length === 3) {
                     const approvalDate = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
                     if (approvalDate > limitDate) {
-                      st.overdueDocs++;
+                      st.overdueDocsList.push(overdueInfo);
                     }
                   }
                 } catch (e) {}
@@ -866,7 +871,7 @@ export default function MayuApp() {
       const avgUpload = s.uploadTimes.length > 0 
         ? Math.round(s.uploadTimes.reduce((a, b) => a + b, 0) / s.uploadTimes.length) 
         : 0;
-      return { ...s, avgUpload };
+      return { ...s, avgUpload, overdueDocs: s.overdueDocsList.length };
     });
   }, [projects]);
 
@@ -1214,9 +1219,17 @@ export default function MayuApp() {
                               </span>
                             </td>
                             <td className="p-4 text-center">
-                              <span className={`font-medium ${stat.overdueDocs > 0 ? 'text-red-600' : 'text-slate-400'}`}>
-                                {stat.overdueDocs}
-                              </span>
+                              {stat.overdueDocs > 0 ? (
+                                <button
+                                  onClick={() => setShowOverdueModal({ areaName: stat.name, docs: stat.overdueDocsList })}
+                                  className="font-bold text-red-600 bg-red-50 hover:bg-red-100 px-3 py-1 rounded-full transition-colors flex items-center justify-center gap-1 mx-auto shadow-sm border border-red-200"
+                                  title="Ver detalle de documentos atrasados"
+                                >
+                                  {stat.overdueDocs} <Eye size={14} />
+                                </button>
+                              ) : (
+                                <span className="font-medium text-slate-400">0</span>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -1626,6 +1639,61 @@ export default function MayuApp() {
 
         </main>
       </div>
+
+      {/* MODAL: DOCUMENT OVERDUE DETAILS */}
+      {showOverdueModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-slide-up border-t-4 border-t-red-500">
+            <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+              <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <AlertCircle className="text-red-500"/> Detalle de Atrasos: {showOverdueModal.areaName}
+              </h3>
+              <button onClick={() => setShowOverdueModal(null)} className="text-slate-400 hover:text-slate-700 bg-slate-200/50 hover:bg-slate-200 p-2 rounded-full transition-colors">
+                <XCircle size={24} />
+              </button>
+            </div>
+            
+            <div className="p-0 overflow-y-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-white border-b border-slate-100 text-[#788A87] text-xs uppercase tracking-wider sticky top-0">
+                  <tr>
+                    <th className="px-5 py-3 font-medium">Proyecto</th>
+                    <th className="px-5 py-3 font-medium">Documento</th>
+                    <th className="px-5 py-3 font-medium">Responsable de Carga</th>
+                    <th className="px-5 py-3 font-medium">Fecha Límite</th>
+                    <th className="px-5 py-3 font-medium">Estado Actual</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {showOverdueModal.docs.map((doc, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-5 py-4 font-semibold text-slate-800">{doc.projectName}</td>
+                      <td className="px-5 py-4 text-slate-600">
+                        {doc.docName} <span className="text-xs bg-slate-200 px-1.5 py-0.5 rounded ml-1 font-mono text-slate-500">{doc.version}</span>
+                      </td>
+                      <td className="px-5 py-4 text-slate-600 flex items-center gap-1 mt-1">
+                        <User size={14} className="text-slate-400"/> {doc.uploaderRole}
+                      </td>
+                      <td className="px-5 py-4 font-medium text-red-600 flex items-center gap-1">
+                        <CalendarDays size={14}/> {doc.deadline.split('-').reverse().join('-')}
+                      </td>
+                      <td className="px-5 py-4">
+                        <StatusBadge status={doc.status} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end">
+              <button onClick={() => setShowOverdueModal(null)} className="bg-slate-900 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors shadow-sm">
+                Cerrar Detalle
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL: DOCUMENT REVIEW & AUDIT */}
       {selectedDoc && (() => {
