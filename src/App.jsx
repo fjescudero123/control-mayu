@@ -14,108 +14,18 @@ if (typeof document !== 'undefined' && !document.getElementById('tailwind-cdn'))
   document.head.appendChild(script);
 }
 
-// --- FIREBASE IMPORTS ---
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+// --- FIREBASE ---
+import { getFbAuth, getFbDb, getFbStorage, signInAnonymously, onAuthStateChanged } from './firebase';
+import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
-// --- FIREBASE INIT (Cerebro Central: crm---mayu) ---
-const firebaseConfig = {
-  apiKey: ['AI', 'za', 'SyAsVgf5GRRuf', '-hNt9MxpCJ', 'ce6wdb9hUB70'].join(''),
-  authDomain: "crm---mayu.firebaseapp.com",
-  projectId: "crm---mayu",
-  storageBucket: "crm---mayu.firebasestorage.app",
-  messagingSenderId: "304169874263",
-  appId: "1:304169874263:web:1cf55b40918bf2de73c412"
-};
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
-
-// --- CONFIGURACIÓN Y CONSTANTES ---
-
-const ROLES = [
-  'Administrador del sistema',
-  'Gerente General',
-  'Gerente Comercial',
-  'Subgerente Comercial',
-  'Project Manager',
-  'Gerente de I+D y Producción',
-  'Jefe de Producción',
-  'Equipo de Diseño',
-  'Gerente de Operaciones',
-  'Jefe de Logística',
-  'Jefe de Bodega',
-  'Gerente de Administración y Finanzas',
-  'Encargado de Calidad'
-];
-
-// Usuarios con TODOS sus números reales integrados (Formato WhatsApp)
-const MOCK_USERS = {
-  'admin': { password: '123', name: 'Administrador IT', role: 'Administrador del sistema', email: 'admin@imayu.cl', phone: '+56900000000' },
-  'fjescudero': { password: '123', name: 'Felix Escudero', role: 'Gerente General', email: 'fjescudero@imayu.cl', phone: '+56991596382' },
-  'vescudero': { password: '123', name: 'Valentina Escudero', role: 'Gerente de Administración y Finanzas', email: 'vescudero@imayu.cl', phone: '+56991297299' },
-  'mepelman': { password: '123', name: 'Martin Epelman', role: 'Gerente de I+D y Producción', email: 'm.epelman@imayu.cl', phone: '+56951894132' },
-  'fescudero': { password: '123', name: 'Felix Escudero Vargas', role: 'Gerente Comercial', email: 'fescudero@imayu.cl', phone: '+56991596382' },
-  'clecaros': { password: '123', name: 'Carlos Lecaros', role: 'Gerente de Operaciones', email: 'clecaros@imayu.cl', phone: '+56978543925' },
-  'efernandez': { password: '123', name: 'Emilio Fernandez', role: 'Subgerente Comercial', email: 'efernandez@imayu.cl', phone: '+56989291925' },
-  'jsantibanez': { password: '123', name: 'Jose Santibañez', role: 'Project Manager', email: 'jsantibanez@imayu.cl', phone: '+56965863356' },
-  'cquintana': { password: '123', name: 'Carlos Quintana', role: 'Equipo de Diseño', email: 'cquintana@imayu.cl', phone: '+56900000000' },
-  'dcuevas': { password: '123', name: 'Daniela Cuevas', role: 'Equipo de Diseño', email: 'dcuevas@imayu.cl', phone: '+56900000000' },
-  'fjerez': { password: '123', name: 'Felipe Jerez', role: 'Jefe de Producción', email: 'fjerez@imayu.cl', phone: '+56988275485' },
-  'groman': { password: '123', name: 'Gabriel Roman', role: 'Jefe de Logística', email: 'groman@imayu.cl', phone: '+56974490582' },
-  'mhernandez': { password: '123', name: 'Mauricio Hernandez', role: 'Jefe de Bodega', email: 'mhernandez@imayu.cl', phone: '+56900000000' },
-  'jquevedo': { password: '123', name: 'Jorge Quevedo', role: 'Encargado de Calidad', email: 'jquevedo@imayu.cl', phone: '+56900000000' }
-};
-
-const APPROVERS = {
-  COMERCIAL: ['Gerente General', 'Gerente de Administración y Finanzas'],
-  INGENIERIA: ['Subgerente Comercial', 'Project Manager', 'Gerente Comercial', 'Gerente General', 'Gerente de I+D y Producción', 'Gerente de Operaciones'],
-  OPERACIONES: ['Gerente de I+D y Producción', 'Subgerente Comercial', 'Project Manager', 'Gerente Comercial', 'Gerente General'],
-  FINANZAS: ['Gerente Comercial', 'Gerente General'],
-  CALIDAD: ['Gerente General', 'Gerente de Operaciones']
-};
-
-// --- COMPONENTES AUXILIARES ---
-
-const StatusBadge = ({ status }) => {
-  const styles = {
-    'Aprobado': 'bg-green-100 text-green-800 border-green-200',
-    'Aprobada': 'bg-green-100 text-green-800 border-green-200',
-    'Aprobado con observaciones': 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    'Aprobado para ejecución': 'bg-[#899264] text-white shadow-sm',
-    'Pendiente': 'bg-gray-100 text-gray-600 border-gray-200',
-    'No iniciada': 'bg-gray-100 text-gray-600 border-gray-200',
-    'En revisión': 'bg-[#788A87]/20 text-[#788A87] border-[#788A87]/30',
-    'En proceso': 'bg-[#788A87]/20 text-[#788A87] border-[#788A87]/30',
-    'En preparación para ejecución': 'bg-[#788A87] text-white shadow-sm',
-    'Observado': 'bg-[#DCA75D]/20 text-[#b5833e] border-[#DCA75D]/40',
-    'Con observaciones': 'bg-[#DCA75D]/20 text-[#b5833e] border-[#DCA75D]/40',
-    'Rechazado': 'bg-red-100 text-red-800 border-red-200',
-    'Bloqueado para inicio': 'bg-red-600 text-white shadow-sm'
-  };
-  return (
-    <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${styles[status] || 'bg-gray-100 text-gray-800'}`}>
-      {status}
-    </span>
-  );
-};
-
-const MayuLogo = ({ className }) => (
-  <svg viewBox="0 0 260 140" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-    <path d="M30 65 L75 33 V65 H30Z" fill="#DCA75D"/>
-    <path d="M78 31 L81 29 V65 H78 V31Z" fill="#DCA75D"/>
-    <path d="M85 26 L115 5 V65 H85 V26Z" fill="#788A87"/>
-    <path d="M118 3 L121 1 V65 H118 V3Z" fill="#DCA75D"/>
-    <path d="M135 0 V65 H158 V20 L135 0Z" fill="#DCDDDF"/>
-    <path d="M163 25 V65 H220 L163 25Z" fill="#899264"/>
-    <text x="125" y="112" fontFamily="Arial, sans-serif" fontSize="48" fontWeight="900" textAnchor="middle" fill="#000000" letterSpacing="2">MAYU</text>
-    <line x1="30" y1="122" x2="220" y2="122" stroke="#899264" strokeWidth="3" />
-    <text x="125" y="136" fontFamily="Arial, sans-serif" fontSize="9" fontWeight="bold" textAnchor="middle" fill="#000000" letterSpacing="0.5">SOLUCIONES CONSTRUCTIVAS</text>
-  </svg>
-);
+// --- IMPORTS EXTRAÍDOS ---
+import { ROLES } from './constants/roles';
+import { APPROVERS } from './constants/approvers';
+import { MOCK_USERS } from './auth/users';
+import { MAKE_WEBHOOK_URL } from './constants/webhooks';
+import StatusBadge from './components/ui/StatusBadge';
+import MayuLogo from './components/ui/MayuLogo';
 
 // --- APLICACIÓN PRINCIPAL ---
 
@@ -164,14 +74,14 @@ export default function MayuApp() {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        await signInAnonymously(auth);
+        await signInAnonymously(getFbAuth());
       } catch (err) {
         console.error("Error autenticando con Firebase:", err);
       }
     };
     initAuth();
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(getFbAuth(), (user) => {
       setFbUser(user);
     });
     return () => unsubscribe();
@@ -181,9 +91,9 @@ export default function MayuApp() {
   useEffect(() => {
     if (!fbUser) return;
 
-    const projectsColRef = collection(db, 'chk_projects');
-    const usersColRef = collection(db, 'chk_users');
-    const crmProjectsColRef = collection(db, 'projects');
+    const projectsColRef = collection(getFbDb(),'chk_projects');
+    const usersColRef = collection(getFbDb(),'chk_users');
+    const crmProjectsColRef = collection(getFbDb(),'projects');
 
     const handleFbError = (error) => {
       console.error(error);
@@ -270,7 +180,7 @@ export default function MayuApp() {
       }
 
       const fullMessage = `*MAYU PLATAFORMA*\n\n*${subject}*\n\n${textBody}\n\n👉 https://control-mayu.netlify.app/\n_Mensaje automático_`;
-      const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/itdahce3bi319xckrb8ayftu8k7mk3zh";
+      // MAKE_WEBHOOK_URL imported from constants/webhooks
 
       for (const phone of phones) {
         // LIMPIEZA INTELIGENTE
@@ -364,7 +274,7 @@ export default function MayuApp() {
         });
 
         if (projChanged) {
-          await setDoc(doc(db, 'chk_projects', p.id), p);
+          await setDoc(doc(getFbDb(),'chk_projects', p.id), p);
           updatesMade = true;
         }
       }
@@ -442,7 +352,7 @@ export default function MayuApp() {
     else if (action === 'DELETE_FILE') {
       if (document.fileUrl) {
         try {
-          const fileRef = ref(storage, document.fileUrl);
+          const fileRef = ref(getFbStorage(),document.fileUrl);
           await deleteObject(fileRef);
         } catch (error) {
           console.error("Error eliminando archivo físico:", error);
@@ -512,7 +422,7 @@ export default function MayuApp() {
     let updatedProject = { ...p, areas: newAreas };
     updatedProject = recalculateProjectStatus(updatedProject);
     
-    await setDoc(doc(db, 'chk_projects', updatedProject.id), updatedProject);
+    await setDoc(doc(getFbDb(),'chk_projects', updatedProject.id), updatedProject);
     
     setSelectedDoc(null);
     setCommentText('');
@@ -526,7 +436,7 @@ export default function MayuApp() {
     
     try {
       const fileExtension = file.name.split('.').pop();
-      const storageRef = ref(storage, `chk_projects/${projectId}/${areaKey}/${docId}_${Date.now()}.${fileExtension}`);
+      const storageRef = ref(getFbStorage(),`chk_projects/${projectId}/${areaKey}/${docId}_${Date.now()}.${fileExtension}`);
       
       await uploadBytes(storageRef, file);
       const downloadUrl = await getDownloadURL(storageRef);
@@ -556,7 +466,7 @@ export default function MayuApp() {
       let updatedProject = { ...p, areas: newAreas };
       updatedProject = recalculateProjectStatus(updatedProject);
       
-      await setDoc(doc(db, 'chk_projects', updatedProject.id), updatedProject);
+      await setDoc(doc(getFbDb(),'chk_projects', updatedProject.id), updatedProject);
       
       if (selectedProject?.id === projectId) setSelectedProject(updatedProject);
 
@@ -606,7 +516,7 @@ export default function MayuApp() {
     newAreas[areaKey].docs[docIndex] = document;
     let updatedProject = { ...p, areas: newAreas };
 
-    await setDoc(doc(db, 'chk_projects', updatedProject.id), updatedProject);
+    await setDoc(doc(getFbDb(),'chk_projects', updatedProject.id), updatedProject);
 
     setEditingDeadline(null);
     if (selectedProject?.id === projectId) setSelectedProject(updatedProject);
@@ -633,7 +543,7 @@ export default function MayuApp() {
     newAreas[selectedDoc.areaKey].docs[docIndex] = document;
 
     let updatedProject = { ...p, areas: newAreas };
-    await setDoc(doc(db, 'chk_projects', updatedProject.id), updatedProject);
+    await setDoc(doc(getFbDb(),'chk_projects', updatedProject.id), updatedProject);
 
     setChatMessage('');
     setSelectedDoc({ ...selectedDoc, doc: document });
@@ -641,7 +551,7 @@ export default function MayuApp() {
 
   const confirmDeleteProject = async () => {
     if (!projectToDelete) return;
-    await deleteDoc(doc(db, 'chk_projects', projectToDelete.id));
+    await deleteDoc(doc(getFbDb(),'chk_projects', projectToDelete.id));
     if (selectedProject?.id === projectToDelete.id) {
       setView('projects');
       setSelectedProject(null);
@@ -742,7 +652,7 @@ export default function MayuApp() {
       };
 
       newProject = recalculateProjectStatus(newProject);
-      await setDoc(doc(db, 'chk_projects', newProject.id), newProject);
+      await setDoc(doc(getFbDb(),'chk_projects', newProject.id), newProject);
 
       setShowNewProjectModal(false);
       setNewProjectForm({ name: '', client: '', type: 'pods', startDate: '', commercialLead: 'Subgerente Comercial', technicalLead: 'Gerente de I+D y Producción', operationalLead: 'Gerente de Operaciones', budget: '', margin: '', crmId: null });
@@ -768,7 +678,7 @@ export default function MayuApp() {
     }
     
     const updatedUser = { ...usersDb[currentUser.id], password: passwordForm.new };
-    await setDoc(doc(db, 'chk_users', currentUser.id), updatedUser);
+    await setDoc(doc(getFbDb(),'chk_users', currentUser.id), updatedUser);
     
     setPasswordForm({ current: '', new: '', confirm: '', error: '', success: '¡Contraseña actualizada con éxito!' });
     setTimeout(() => {
