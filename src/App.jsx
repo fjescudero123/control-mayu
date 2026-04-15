@@ -22,6 +22,7 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import { APPROVERS } from './constants/approvers';
 import { MOCK_USERS } from './auth/users';
 import { MAKE_WEBHOOK_URL } from './constants/webhooks';
+import { useFirestoreCollection } from './hooks/useFirestoreCollection';
 import MayuLogo from './components/ui/MayuLogo';
 import LoginScreen from './components/shared/LoginScreen';
 import DashboardProjectsView from './views/DashboardProjectsView';
@@ -39,8 +40,6 @@ export default function MayuApp() {
   const [firebaseError, setFirebaseError] = useState('');
   
   const [usersDb, setUsersDb] = useState({});
-  const [projects, setProjects] = useState([]);
-  const [crmProjects, setCrmProjects] = useState([]); 
   
   const [currentUser, setCurrentUser] = useState(null);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
@@ -59,8 +58,10 @@ export default function MayuApp() {
   const [editingDeadline, setEditingDeadline] = useState(null); 
   const [chatMessage, setChatMessage] = useState(''); 
   
-  const projectsRef = useRef(projects);
-  const usersRef = useRef(usersDb);
+  // projects is declared below via useFirestoreCollection + useMemo; init refs
+  // with empty values (useEffects below sync them once the sources are defined).
+  const projectsRef = useRef([]);
+  const usersRef = useRef({});
 
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [newProjectForm, setNewProjectForm] = useState({
@@ -69,8 +70,8 @@ export default function MayuApp() {
     operationalLead: 'Gerente de Operaciones', budget: '', margin: '', crmId: null
   });
 
-  useEffect(() => { projectsRef.current = projects; }, [projects]);
   useEffect(() => { usersRef.current = usersDb; }, [usersDb]);
+  // projectsRef sync moved below where `projects` is defined (TDZ fix).
 
   // 1. Firebase Auth Initializer
   useEffect(() => {
@@ -89,27 +90,51 @@ export default function MayuApp() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Fetch Data from Firestore
+  // Hoisted out of the former all-in-one fetch useEffect so it can be passed
+  // as `onError` to useFirestoreCollection and also referenced by the chk_users
+  // listener below.
+  const handleFbError = (error) => {
+    console.error(error);
+    if (error.message?.includes('permissions') || error.code === 'permission-denied') {
+      setFirebaseError('⚠️ Acceso denegado a Firebase. Es muy probable que tus Reglas de Seguridad de Firestore hayan expirado (el límite por defecto son 30 días). Ve a la consola de Firebase -> Firestore Database -> Rules, y actualízalas a "allow read, write: if true;".');
+    }
+  };
+
+  // chk_projects — real-time via hook. Caller sorts by id desc in useMemo
+  // (hook is minimalist by design; sort is presentation concern).
+  const { data: projectsRaw, error: projectsError } = useFirestoreCollection('chk_projects', {
+    transform: d => d.data(),
+    enabled: !!fbUser,
+    onError: handleFbError,
+  });
+  const projects = useMemo(
+    () => [...projectsRaw].sort((a, b) => (b.id || '').localeCompare(a.id || '')),
+    [projectsRaw],
+  );
+
+  // Keep projectsRef in sync with projects (used by the cron job and handlers).
+  useEffect(() => { projectsRef.current = projects; }, [projects]);
+
+  // Preserve pre-hook behavior: clear firebaseError banner whenever chk_projects
+  // snapshot succeeds (original L111 did this inline inside the listener).
   useEffect(() => {
     if (!fbUser) return;
+    if (projectsError) return;
+    setFirebaseError('');
+  }, [projectsRaw, projectsError, fbUser]);
 
-    const projectsColRef = collection(getFbDb(),'chk_projects');
+  // crmProjects — real-time via hook (default V1 transform, was V0 — cosmetic).
+  const { data: crmProjects } = useFirestoreCollection('projects', {
+    enabled: !!fbUser,
+    onError: handleFbError,
+  });
+
+  // chk_users stays inline — V5 pattern (auto-seed MOCK_USERS when empty,
+  // phone-sync side effects, map-keyed return shape). Per HANDOFF decision 36,
+  // not migrated to the hook.
+  useEffect(() => {
+    if (!fbUser) return;
     const usersColRef = collection(getFbDb(),'chk_users');
-    const crmProjectsColRef = collection(getFbDb(),'projects');
-
-    const handleFbError = (error) => {
-      console.error(error);
-      if (error.message?.includes('permissions') || error.code === 'permission-denied') {
-        setFirebaseError('⚠️ Acceso denegado a Firebase. Es muy probable que tus Reglas de Seguridad de Firestore hayan expirado (el límite por defecto son 30 días). Ve a la consola de Firebase -> Firestore Database -> Rules, y actualízalas a "allow read, write: if true;".');
-      }
-    };
-
-    const unsubsProjects = onSnapshot(projectsColRef, (snapshot) => {
-      const loadedProjects = snapshot.docs.map(d => d.data());
-      loadedProjects.sort((a, b) => b.id.localeCompare(a.id));
-      setProjects(loadedProjects);
-      setFirebaseError(''); // Limpiar error si conecta
-    }, handleFbError);
 
     const unsubsUsers = onSnapshot(usersColRef, (snapshot) => {
       if (snapshot.empty) {
@@ -120,35 +145,26 @@ export default function MayuApp() {
         });
       } else {
         const loadedUsers = {};
-        snapshot.docs.forEach(d => { 
+        snapshot.docs.forEach(d => {
           let userData = d.data();
-          
+
           if (MOCK_USERS[d.id] && MOCK_USERS[d.id].phone !== '+56900000000') {
              if (userData.phone !== MOCK_USERS[d.id].phone) {
                  userData.phone = MOCK_USERS[d.id].phone;
                  setDoc(doc(usersColRef, d.id), userData).catch(err => {
                    if(err.code === 'permission-denied') handleFbError(err);
-                 }); 
+                 });
              }
           }
-          
-          loadedUsers[d.id] = userData; 
+
+          loadedUsers[d.id] = userData;
         });
         setUsersDb(loadedUsers);
         setIsDataLoaded(true);
       }
     }, handleFbError);
 
-    const unsubsCrmProjects = onSnapshot(crmProjectsColRef, (snapshot) => {
-      const loadedCrmProjects = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
-      setCrmProjects(loadedCrmProjects);
-    }, handleFbError);
-
-    return () => {
-      unsubsProjects();
-      unsubsUsers();
-      unsubsCrmProjects();
-    };
+    return () => unsubsUsers();
   }, [fbUser]);
 
   // --- FUNCIÓN DE ENVÍO DE WHATSAPP DIRECTO A MAKE.COM ---
