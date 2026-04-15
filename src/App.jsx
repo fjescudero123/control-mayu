@@ -892,6 +892,33 @@ export default function MayuApp() {
     setView('dashboard');
   };
 
+  // --- CTX OBJECT (agrupado por dominio) ---
+  const ctx = useMemo(() => ({
+    data: { projects, areaStats, ganttData, kpis },
+    active: { currentUser, role },
+    nav: { view, setView, selectedProject, setSelectedProject, selectedDoc, setSelectedDoc },
+    setters: {
+      showOverdueModal, setShowOverdueModal,
+      setShowNewProjectModal,
+      setProjectToDelete,
+      editingDeadline, setEditingDeadline,
+      commentText, setCommentText,
+      chatMessage, setChatMessage,
+      uploadingDocs,
+    },
+    fb: {
+      handleSimulateAction,
+      handleFileUpload,
+      handleSaveDeadline,
+      handleSendMessage,
+    },
+  }), [
+    projects, areaStats, ganttData, kpis,
+    currentUser, role,
+    view, selectedProject, selectedDoc,
+    showOverdueModal, editingDeadline, commentText, chatMessage, uploadingDocs,
+  ]);
+
   if (firebaseError) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
