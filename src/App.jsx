@@ -14,7 +14,7 @@ if (typeof document !== 'undefined' && !document.getElementById('tailwind-cdn'))
 }
 
 // --- FIREBASE ---
-import { getFbAuth, getFbDb, getFbStorage, signInAnonymously, onAuthStateChanged } from './firebase';
+import { getFbDb, getFbStorage } from './firebase';
 import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 
@@ -24,6 +24,7 @@ import { MOCK_USERS } from './auth/users';
 import { MAKE_WEBHOOK_URL } from './constants/webhooks';
 import { useFirestoreCollection } from './hooks/useFirestoreCollection';
 import { useStorageUpload } from './hooks/useStorageUpload';
+import { useAuth } from './hooks/useAuth';
 import MayuLogo from './components/ui/MayuLogo';
 import LoginScreen from './components/shared/LoginScreen';
 import DashboardProjectsView from './views/DashboardProjectsView';
@@ -34,7 +35,7 @@ import ProjectDetailView from './views/ProjectDetailView';
 // --- APLICACIÓN PRINCIPAL ---
 
 export default function MayuApp() {
-  const [fbUser, setFbUser] = useState(null);
+  const { firebaseUser: fbUser } = useAuth();
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [uploadingDocs, setUploadingDocs] = useState({});
   const [isCreatingProject, setIsCreatingProject] = useState(false); 
@@ -74,22 +75,8 @@ export default function MayuApp() {
   useEffect(() => { usersRef.current = usersDb; }, [usersDb]);
   // projectsRef sync moved below where `projects` is defined (TDZ fix).
 
-  // 1. Firebase Auth Initializer
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        await signInAnonymously(getFbAuth());
-      } catch (err) {
-        console.error("Error autenticando con Firebase:", err);
-      }
-    };
-    initAuth();
-
-    const unsubscribe = onAuthStateChanged(getFbAuth(), (user) => {
-      setFbUser(user);
-    });
-    return () => unsubscribe();
-  }, []);
+  // 1. Firebase Auth — migrated to useAuth() hook (Fase 4).
+  // fbUser alias kept so all downstream callers (enabled: !!fbUser, etc.) are untouched.
 
   // Hoisted out of the former all-in-one fetch useEffect so it can be passed
   // as `onError` to useFirestoreCollection and also referenced by the chk_users
