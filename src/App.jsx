@@ -16,13 +16,14 @@ if (typeof document !== 'undefined' && !document.getElementById('tailwind-cdn'))
 // --- FIREBASE ---
 import { getFbAuth, getFbDb, getFbStorage, signInAnonymously, onAuthStateChanged } from './firebase';
 import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, deleteObject } from 'firebase/storage';
 
 // --- IMPORTS EXTRAÍDOS ---
 import { APPROVERS } from './constants/approvers';
 import { MOCK_USERS } from './auth/users';
 import { MAKE_WEBHOOK_URL } from './constants/webhooks';
 import { useFirestoreCollection } from './hooks/useFirestoreCollection';
+import { useStorageUpload } from './hooks/useStorageUpload';
 import MayuLogo from './components/ui/MayuLogo';
 import LoginScreen from './components/shared/LoginScreen';
 import DashboardProjectsView from './views/DashboardProjectsView';
@@ -128,6 +129,11 @@ export default function MayuApp() {
     enabled: !!fbUser,
     onError: handleFbError,
   });
+
+  // File uploads a `chk_projects/{projectId}/{areaKey}/{filename}`. basePath
+  // fijo + subpath dinamico por call (handleFileUpload recibe projectId/areaKey
+  // como args).
+  const { upload: uploadFile } = useStorageUpload('chk_projects');
 
   // chk_users stays inline — V5 pattern (auto-seed MOCK_USERS when empty,
   // phone-sync side effects, map-keyed return shape). Per HANDOFF decision 36,
@@ -451,13 +457,13 @@ export default function MayuApp() {
     if (!file) return;
     
     setUploadingDocs(prev => ({ ...prev, [docId]: true }));
-    
+
     try {
-      const fileExtension = file.name.split('.').pop();
-      const storageRef = ref(getFbStorage(),`chk_projects/${projectId}/${areaKey}/${docId}_${Date.now()}.${fileExtension}`);
-      
-      await uploadBytes(storageRef, file);
-      const downloadUrl = await getDownloadURL(storageRef);
+      // Migrated to useStorageUpload hook. Filename strategy changed from
+      // `{docId}_{ts}.{ext}` to `{ts}_{rand6}_{file.name}` — docId ya queda
+      // trackeado en la estructura del documento, el path solo necesita
+      // unicidad + traza del nombre original.
+      const { url: downloadUrl } = await uploadFile(file, { subpath: `${projectId}/${areaKey}` });
 
       const p = projects.find(proj => proj.id === projectId);
       if (!p) return;
