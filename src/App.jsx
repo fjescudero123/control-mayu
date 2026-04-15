@@ -28,6 +28,8 @@ import StatusBadge from './components/ui/StatusBadge';
 import MayuLogo from './components/ui/MayuLogo';
 import LoginScreen from './components/shared/LoginScreen';
 import DashboardProjectsView from './views/DashboardProjectsView';
+import GanttView from './views/GanttView';
+import ApprovalsView from './views/ApprovalsView';
 
 // --- APLICACIÓN PRINCIPAL ---
 
@@ -1018,72 +1020,7 @@ export default function MayuApp() {
 
 
           {/* VIEW: GANTT CHART */}
-          {view === 'gantt' && (
-            <div className="max-w-6xl mx-auto animate-fade-in flex flex-col h-full min-h-[calc(100vh-120px)]">
-              <div className="flex justify-between items-center mb-6 shrink-0">
-                <div>
-                  <h2 className="text-2xl font-bold text-slate-800">Carta Gantt de Proyectos</h2>
-                  <p className="text-sm text-slate-500">Tiempos calculados automáticamente según las fechas límite del checklist.</p>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col flex-1">
-                {!ganttData ? (
-                  <div className="flex flex-col items-center justify-center h-full text-slate-500 p-16 text-center my-auto">
-                    <CalendarDays size={64} className="mb-4 opacity-20" />
-                    <p className="font-bold text-xl text-slate-600 mb-2">No hay suficientes datos</p>
-                    <p className="text-sm max-w-md">Para generar la Carta Gantt visual, debes asignar "Fechas Límite" a los documentos de los proyectos.</p>
-                  </div>
-                ) : (
-                  <div className="flex-1 overflow-auto bg-white custom-scrollbar pb-8">
-                    <div className="min-w-max">
-                      <div className="flex border-b border-slate-200 bg-slate-50 sticky top-0 z-30">
-                        <div className="w-72 shrink-0 border-r border-slate-200 p-4 font-bold text-slate-700 bg-slate-50 sticky left-0 z-40 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">Proyecto y Cliente</div>
-                        <div className="relative flex" style={{ width: ganttData.months.length * 150 }}>
-                          {ganttData.months.map((m) => (
-                            <div key={m.getTime()} style={{ width: 150 }} className="border-r border-slate-200 p-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">
-                              {m.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' })}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="relative">
-                        <div className="absolute inset-0 flex pointer-events-none z-0 ml-72" style={{ width: ganttData.months.length * 150 }}>
-                          {ganttData.months.map((m) => (<div key={m.getTime()} style={{ width: 150 }} className="border-r border-slate-100 h-full" />))}
-                        </div>
-
-                        {ganttData.projectTimelines.map((project) => {
-                          const leftPx = ((project.startMs - ganttData.startTimeline.getTime()) / ganttData.totalMs) * (ganttData.months.length * 150);
-                          let widthPx = ((project.endMs - project.startMs) / ganttData.totalMs) * (ganttData.months.length * 150);
-                          if (widthPx < 28) widthPx = 28; 
-
-                          return (
-                            <div key={project.id} className="flex border-b border-slate-100 hover:bg-slate-50 group relative z-10 transition-colors h-16">
-                              <div className="w-72 shrink-0 border-r border-slate-200 px-4 py-2 bg-white group-hover:bg-slate-50 sticky left-0 z-20 flex flex-col justify-center shadow-[2px_0_5px_-2px_rgba(0,0,0,0.02)] transition-colors">
-                                <span className="font-bold text-sm text-slate-800 truncate cursor-pointer hover:text-[#929965]" onClick={() => { setSelectedProject(project); setView('project_detail'); }}>{project.name}</span>
-                                <span className="text-xs text-slate-400 truncate mt-0.5">{project.client}</span>
-                              </div>
-                              <div className="relative" style={{ width: ganttData.months.length * 150 }}>
-                                <div 
-                                  className={`absolute h-8 rounded-lg shadow-sm flex items-center px-3 text-xs font-medium text-white overflow-hidden cursor-pointer transition-transform hover:scale-[1.01] hover:brightness-110 ${project.status === 'Aprobado para ejecución' ? 'bg-[#899264]' : 'bg-[#DCA75D]'}`} 
-                                  style={{ left: leftPx, width: widthPx, top: '50%', transform: 'translateY(-50%)' }} 
-                                  onClick={() => { setSelectedProject(project); setView('project_detail'); }} 
-                                  title={`Proyecto: ${project.name}\nInicio Checklist: ${new Date(project.startMs).toLocaleDateString('es-CL')}\nFin Checklist: ${new Date(project.endMs).toLocaleDateString('es-CL')}`}
-                                >
-                                  <span className="truncate w-full text-center drop-shadow-sm font-semibold">{project.status}</span>
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          {view === 'gantt' && <GanttView ctx={ctx} />}
 
           {/* VIEW: PROJECT DETAILS */}
           {view === 'project_detail' && selectedProject && (() => {
@@ -1266,53 +1203,7 @@ export default function MayuApp() {
           })()}
 
           {/* VIEW: MY APPROVALS */}
-          {view === 'approvals' && (
-            <div className="max-w-4xl mx-auto animate-fade-in">
-              <h2 className="text-2xl font-bold mb-6 flex items-center gap-2 text-slate-800">
-                <CheckSquare className="text-[#DCA75D]"/> Bandeja de Aprobaciones
-              </h2>
-              <p className="text-[#788A87] mb-6">Hola <strong>{currentUser.name}</strong>, estos son los documentos que requieren tu revisión para permitir el inicio de los proyectos.</p>
-
-              <div className="flex flex-col gap-4">
-                {projects.flatMap(p => 
-                  Object.entries(p.areas || {}).flatMap(([areaKey, area]) => 
-                    area.docs
-                      .filter(d => d.status === 'En revisión' && APPROVERS[areaKey.toUpperCase()]?.includes(role) && d.approvals[role] !== 'Aprobado' && d.approvals[role] !== 'Aprobado con obs.')
-                      .map(doc => (
-                        <div key={`${p.id}-${doc.id}`} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:border-[#DCA75D] transition-colors">
-                          <div className="flex items-start gap-4">
-                            <div className="bg-[#DCA75D]/10 p-3 rounded-lg text-[#DCA75D] mt-1">
-                              <FileText size={24} />
-                            </div>
-                            <div>
-                              <div className="text-xs font-semibold text-[#899264] mb-1 uppercase tracking-wide">{p.name} • {area.name}</div>
-                              <h4 className="text-lg font-bold text-slate-800">{doc.name}</h4>
-                              <p className="text-sm text-[#788A87] mt-1 flex items-center gap-1">
-                                <Clock size={14}/> Asignado a: {doc.uploaderRole} • Versión {doc.version}
-                                {doc.deadline && <span className="ml-2 bg-red-100 text-red-600 px-1.5 rounded text-xs flex items-center gap-1"><CalendarDays size={12}/> {doc.deadline.split('-').reverse().join('-')}</span>}
-                              </p>
-                            </div>
-                          </div>
-                          <button 
-                            onClick={() => { setSelectedProject(p); setSelectedDoc({projectId: p.id, areaKey, doc}) }}
-                            className="bg-slate-900 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-800 shadow-sm"
-                          >
-                            Revisar Documento
-                          </button>
-                        </div>
-                      ))
-                  )
-                )}
-                {kpis.myPendingApprovals === 0 && (
-                  <div className="text-center py-16 bg-white rounded-xl border border-slate-200 border-dashed">
-                    <CheckCircle2 size={48} className="mx-auto text-slate-300 mb-3" />
-                    <h3 className="text-lg font-medium text-slate-500">Todo al día</h3>
-                    <p className="text-sm text-slate-400">No tienes documentos pendientes de revisión.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          {view === 'approvals' && <ApprovalsView ctx={ctx} />}
 
         </main>
       </div>
