@@ -1,9 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { 
-  LayoutDashboard, FolderKanban, CheckSquare, Clock, AlertCircle, 
-  CheckCircle2, XCircle, UploadCloud, Eye, History, MessageSquare, 
-  ChevronRight, FileText, UserCircle, PlayCircle, ShieldCheck, LogOut, 
-  Lock, User, Plus, Trash2, Key, Loader, Edit2, CalendarDays, Send, Briefcase, BarChart3
+import {
+  LayoutDashboard, FolderKanban, CheckSquare, AlertCircle,
+  CheckCircle2, XCircle, ShieldCheck, LogOut, Trash2, Key, Loader,
+  CalendarDays, Briefcase
 } from 'lucide-react';
 
 // --- INYECCIÓN AUTOMÁTICA DE ESTILOS (TAILWIND CDN) ---
@@ -20,11 +19,9 @@ import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firesto
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 // --- IMPORTS EXTRAÍDOS ---
-import { ROLES } from './constants/roles';
 import { APPROVERS } from './constants/approvers';
 import { MOCK_USERS } from './auth/users';
 import { MAKE_WEBHOOK_URL } from './constants/webhooks';
-import StatusBadge from './components/ui/StatusBadge';
 import MayuLogo from './components/ui/MayuLogo';
 import LoginScreen from './components/shared/LoginScreen';
 import DashboardProjectsView from './views/DashboardProjectsView';
