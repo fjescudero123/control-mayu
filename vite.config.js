@@ -8,7 +8,7 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom', 'firebase'],
     alias: {
-      '@mayu/hooks': fileURLToPath(new URL('../packages/hooks/src/index.ts', import.meta.url))
+      '@mayu/hooks': fileURLToPath(new URL('./src/hooks/shared/index.ts', import.meta.url))
     }
   }
 })
