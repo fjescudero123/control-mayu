@@ -32,16 +32,20 @@ import ProjectDetailView from './views/ProjectDetailView';
 
 // --- APLICACIÓN PRINCIPAL ---
 
+const HUB_URL = window.location.hostname === 'localhost' ? 'http://localhost:5178/' : 'https://mayu-hub.netlify.app/';
+
 export default function MayuApp() {
   const { firebaseUser: fbUser } = useAuth();
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [uploadingDocs, setUploadingDocs] = useState({});
-  const [isCreatingProject, setIsCreatingProject] = useState(false); 
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [firebaseError, setFirebaseError] = useState('');
-  
+
   const [usersDb, setUsersDb] = useState({});
-  
-  const [currentUser, setCurrentUser] = useState(null);
+
+  const [currentUser, setCurrentUser] = useState(() => {
+    try { const s = localStorage.getItem('mayu_session'); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginError, setLoginError] = useState('');
   
@@ -884,30 +888,30 @@ export default function MayuApp() {
     };
   }, [projects, role]);
 
-  // ─── Hub SSO: auto-login via ?hubToken= ─────────────────────────────────────
+  // ─── Hub SSO: auto-login via ?hubToken= OR redirect to hub ──────────────────
   useEffect(() => {
-    if (!isDataLoaded || currentUser) return;
+    if (currentUser) return;
+    if (!isDataLoaded) return; // wait for Firestore before checking token
     const params = new URLSearchParams(window.location.search);
     const token = params.get('hubToken');
-    if (!token) return;
+    if (!token) { window.location.href = HUB_URL; return; }
     (async () => {
       try {
         const snap = await getDoc(doc(getFbDb(), 'hub_sessions', token));
-        if (!snap.exists()) return;
+        if (!snap.exists()) { window.location.href = HUB_URL; return; }
         const session = snap.data();
-        // Validate token age (5 min max)
         const created = session.createdAt?.toDate?.();
-        if (created && (Date.now() - created.getTime()) > 5 * 60 * 1000) return;
-        // Find user in local DB
+        if (created && (Date.now() - created.getTime()) > 5 * 60 * 1000) { window.location.href = HUB_URL; return; }
         const u = usersDb[session.username];
         if (u) {
-          setCurrentUser({ id: session.username, ...u });
+          const userData = { id: session.username, ...u };
+          setCurrentUser(userData);
+          localStorage.setItem('mayu_session', JSON.stringify(userData));
           setLoginError('');
-        }
-        // Cleanup: delete token (one-time use) + remove from URL
+        } else { window.location.href = HUB_URL; return; }
         deleteDoc(doc(getFbDb(), 'hub_sessions', token)).catch(() => {});
         window.history.replaceState({}, '', window.location.pathname);
-      } catch (e) { console.warn('Hub SSO failed:', e); }
+      } catch (e) { console.warn('Hub SSO failed:', e); window.location.href = HUB_URL; }
     })();
   }, [isDataLoaded, currentUser]);
 
@@ -915,7 +919,9 @@ export default function MayuApp() {
     e.preventDefault();
     const user = usersDb[loginForm.username.toLowerCase()];
     if (user && user.password === loginForm.password) {
-      setCurrentUser({ id: loginForm.username.toLowerCase(), ...user });
+      const userData = { id: loginForm.username.toLowerCase(), ...user };
+      setCurrentUser(userData);
+      localStorage.setItem('mayu_session', JSON.stringify(userData));
       setLoginError('');
       setLoginForm({ username: '', password: '' });
     } else {
@@ -924,8 +930,9 @@ export default function MayuApp() {
   };
 
   const handleLogout = () => {
+    localStorage.removeItem('mayu_session');
     setCurrentUser(null);
-    setView('dashboard');
+    window.location.href = HUB_URL;
   };
 
   // --- CTX OBJECT (agrupado por dominio) ---
@@ -989,7 +996,7 @@ export default function MayuApp() {
   }
 
   if (!currentUser) {
-    return <LoginScreen loginForm={loginForm} setLoginForm={setLoginForm} loginError={loginError} onLogin={handleLogin} />;
+    return null; // Redirecting to hub
   }
 
   return (
