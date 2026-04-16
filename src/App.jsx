@@ -15,7 +15,7 @@ if (typeof document !== 'undefined' && !document.getElementById('tailwind-cdn'))
 
 // --- FIREBASE ---
 import { getFbDb, getFbStorage } from './firebase';
-import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 
 // --- IMPORTS EXTRAÍDOS ---
@@ -883,6 +883,33 @@ export default function MayuApp() {
       myPendingApprovals: myPending
     };
   }, [projects, role]);
+
+  // ─── Hub SSO: auto-login via ?hubToken= ─────────────────────────────────────
+  useEffect(() => {
+    if (!isDataLoaded || currentUser) return;
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('hubToken');
+    if (!token) return;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(getFbDb(), 'hub_sessions', token));
+        if (!snap.exists()) return;
+        const session = snap.data();
+        // Validate token age (5 min max)
+        const created = session.createdAt?.toDate?.();
+        if (created && (Date.now() - created.getTime()) > 5 * 60 * 1000) return;
+        // Find user in local DB
+        const u = usersDb[session.username];
+        if (u) {
+          setCurrentUser({ id: session.username, ...u });
+          setLoginError('');
+        }
+        // Cleanup: delete token (one-time use) + remove from URL
+        deleteDoc(doc(getFbDb(), 'hub_sessions', token)).catch(() => {});
+        window.history.replaceState({}, '', window.location.pathname);
+      } catch (e) { console.warn('Hub SSO failed:', e); }
+    })();
+  }, [isDataLoaded, currentUser]);
 
   const handleLogin = (e) => {
     e.preventDefault();
