@@ -21,7 +21,7 @@ import { ref, deleteObject } from 'firebase/storage';
 // --- IMPORTS EXTRAÍDOS ---
 import { APPROVERS } from './constants/approvers';
 import { MOCK_USERS } from './auth/users';
-import { MAKE_WEBHOOK_URL } from './constants/webhooks';
+import { MAKE_WEBHOOK_URL, WHATSAPP_GROUP_ID } from './constants/webhooks';
 import { useFirestoreCollection, useStorageUpload, useAuth } from '@mayu/hooks';
 import MayuLogo from './components/ui/MayuLogo';
 import LoginScreen from './components/shared/LoginScreen';
@@ -192,8 +192,12 @@ export default function MayuApp() {
          return;
       }
 
+      if (!MAKE_WEBHOOK_URL) {
+         console.warn("MAKE_WEBHOOK_URL no configurado (falta VITE_MAKE_WEBHOOK_URL en env). Notificacion omitida.");
+         return;
+      }
+
       const fullMessage = `*MAYU PLATAFORMA*\n\n*${subject}*\n\n${textBody}\n\n👉 https://control-mayu.netlify.app/\n_Mensaje automático_`;
-      // MAKE_WEBHOOK_URL imported from constants/webhooks
 
       for (const phone of phones) {
         // LIMPIEZA INTELIGENTE
@@ -270,7 +274,8 @@ export default function MayuApp() {
                 const hoursSinceLastDeadlineReminder = lastDeadlineReminder ? (now - lastDeadlineReminder) / (1000 * 60 * 60) : 999;
                 
                 if (!lastDeadlineReminder || hoursSinceLastDeadlineReminder >= 24) {
-                  const targetRoles = [docItem.uploaderRole, 'Subgerente Comercial', '120363405205015820@g.us']; 
+                  const targetRoles = [docItem.uploaderRole, 'Subgerente Comercial'];
+                  if (WHATSAPP_GROUP_ID) targetRoles.push(WHATSAPP_GROUP_ID);
                   const uniqueRoles = [...new Set(targetRoles)];
                   
                   sendWhatsAppNotification(
