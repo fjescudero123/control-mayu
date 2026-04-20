@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   LayoutDashboard, FolderKanban, CheckSquare, AlertCircle,
   CheckCircle2, XCircle, ShieldCheck, LogOut, Trash2, Key, Loader,
-  CalendarDays, Briefcase
+  CalendarDays, Briefcase, Package
 } from 'lucide-react';
 
 // --- INYECCIÓN AUTOMÁTICA DE ESTILOS (TAILWIND CDN) ---
@@ -22,6 +22,7 @@ import { ref, deleteObject } from 'firebase/storage';
 import { APPROVERS } from './constants/approvers';
 import { MOCK_USERS } from './auth/users';
 import { MAKE_WEBHOOK_URL, WHATSAPP_GROUP_ID } from './constants/webhooks';
+import { PT_SEED } from './constants/productosTipo';
 import { useFirestoreCollection, useStorageUpload, useAuth } from '@mayu/hooks';
 import MayuLogo from './components/ui/MayuLogo';
 import LoginScreen from './components/shared/LoginScreen';
@@ -29,6 +30,7 @@ import DashboardProjectsView from './views/DashboardProjectsView';
 import GanttView from './views/GanttView';
 import ApprovalsView from './views/ApprovalsView';
 import ProjectDetailView from './views/ProjectDetailView';
+import ProductosTipoView from './views/ProductosTipoView';
 
 // --- APLICACIÓN PRINCIPAL ---
 
@@ -66,6 +68,11 @@ export default function MayuApp() {
   // with empty values (useEffects below sync them once the sources are defined).
   const projectsRef = useRef([]);
   const usersRef = useRef({});
+
+  // Productos Tipo — biblioteca viva de productos recurrentes.
+  const [selectedProductoTipo, setSelectedProductoTipo] = useState(null);
+  const [selectedPTDoc, setSelectedPTDoc] = useState(null);
+  const [ptChatMessage, setPtChatMessage] = useState('');
 
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [newProjectForm, setNewProjectForm] = useState({
@@ -161,6 +168,111 @@ export default function MayuApp() {
 
     return () => unsubsUsers();
   }, [fbUser]);
+
+  // chk_productos_tipo — real-time via hook + auto-seed si vacío.
+  const { data: productosTipo } = useFirestoreCollection('chk_productos_tipo', {
+    transform: d => d.data(),
+    enabled: !!fbUser,
+    onError: handleFbError,
+  });
+
+  const ptSeededRef = useRef(false);
+  useEffect(() => {
+    if (!fbUser || !isDataLoaded) return;
+    if (ptSeededRef.current) return;
+    // El hook retorna array vacío mientras carga y también cuando no hay docs.
+    // Esperamos un tick breve antes de seedear para evitar doble escritura.
+    if (productosTipo.length > 0) { ptSeededRef.current = true; return; }
+    ptSeededRef.current = true;
+    PT_SEED.forEach(pt => {
+      setDoc(doc(getFbDb(), 'chk_productos_tipo', pt.id), pt).catch(err => {
+        if (err.code === 'permission-denied') handleFbError(err);
+      });
+    });
+  }, [fbUser, isDataLoaded, productosTipo]);
+
+  // Storage uploads para productos tipo (basePath separado del de proyectos).
+  const { upload: uploadPTFile } = useStorageUpload('chk_productos_tipo');
+
+  const handlePTFileUpload = async (productoTipoId, areaKey, docId, file) => {
+    if (!file) return;
+    setUploadingDocs(prev => ({ ...prev, [`pt-${docId}`]: true }));
+    try {
+      const { url: downloadUrl } = await uploadPTFile(file, { subpath: `${productoTipoId}/${areaKey}` });
+      const pt = productosTipo.find(p => p.id === productoTipoId);
+      if (!pt) return;
+      const newAreas = { ...pt.areas };
+      const docIndex = newAreas[areaKey].docs.findIndex(d => d.id === docId);
+      const document = { ...newAreas[areaKey].docs[docIndex] };
+      const now = new Date();
+      const nowString = now.toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' });
+      const newVersion = document.version === '-' ? 1 : parseInt(document.version.replace('V', '')) + 1;
+      document.version = `V${newVersion}`;
+      document.fileUrl = downloadUrl;
+      document.originalFileName = file.name;
+      document.history = [
+        { date: nowString, user: currentUser.name, action: `Cargó ${document.version} (${file.name})` },
+        ...(document.history || []),
+      ];
+      newAreas[areaKey].docs[docIndex] = document;
+      const updated = { ...pt, areas: newAreas };
+      await setDoc(doc(getFbDb(), 'chk_productos_tipo', updated.id), updated);
+      if (selectedProductoTipo?.id === productoTipoId) setSelectedProductoTipo(updated);
+    } catch (error) {
+      console.error('Error subiendo archivo a producto tipo:', error);
+      alert('Error al subir el archivo. Verifica las reglas de Storage en Firebase.');
+    } finally {
+      setUploadingDocs(prev => ({ ...prev, [`pt-${docId}`]: false }));
+    }
+  };
+
+  const handlePTDeleteFile = async (productoTipoId, areaKey, docId) => {
+    const pt = productosTipo.find(p => p.id === productoTipoId);
+    if (!pt) return;
+    const newAreas = { ...pt.areas };
+    const docIndex = newAreas[areaKey].docs.findIndex(d => d.id === docId);
+    const document = { ...newAreas[areaKey].docs[docIndex] };
+    if (document.fileUrl) {
+      try {
+        const fileRef = ref(getFbStorage(), document.fileUrl);
+        await deleteObject(fileRef);
+      } catch (error) {
+        console.error('Error eliminando archivo físico:', error);
+      }
+    }
+    const nowString = new Date().toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' });
+    document.fileUrl = null;
+    document.originalFileName = null;
+    document.history = [
+      { date: nowString, user: currentUser.name, action: `Eliminó el archivo actual` },
+      ...(document.history || []),
+    ];
+    newAreas[areaKey].docs[docIndex] = document;
+    const updated = { ...pt, areas: newAreas };
+    await setDoc(doc(getFbDb(), 'chk_productos_tipo', updated.id), updated);
+    if (selectedProductoTipo?.id === productoTipoId) setSelectedProductoTipo(updated);
+  };
+
+  const handlePTSendMessage = async () => {
+    if (!ptChatMessage.trim() || !selectedPTDoc) return;
+    const pt = productosTipo.find(p => p.id === selectedPTDoc.productoTipoId);
+    if (!pt) return;
+    const newAreas = { ...pt.areas };
+    const docIndex = newAreas[selectedPTDoc.areaKey].docs.findIndex(d => d.id === selectedPTDoc.doc.id);
+    const document = { ...newAreas[selectedPTDoc.areaKey].docs[docIndex] };
+    const newMessage = {
+      id: Date.now().toString(),
+      text: ptChatMessage.trim(),
+      user: currentUser.name,
+      timestamp: new Date().toISOString(),
+    };
+    document.messages = [...(document.messages || []), newMessage];
+    newAreas[selectedPTDoc.areaKey].docs[docIndex] = document;
+    const updated = { ...pt, areas: newAreas };
+    await setDoc(doc(getFbDb(), 'chk_productos_tipo', updated.id), updated);
+    setPtChatMessage('');
+    setSelectedPTDoc({ ...selectedPTDoc, doc: document });
+  };
 
   // --- FUNCIÓN DE ENVÍO DE WHATSAPP DIRECTO A MAKE.COM ---
   const sendWhatsAppNotification = async (targetRoles, subject, textBody) => {
@@ -942,9 +1054,15 @@ export default function MayuApp() {
 
   // --- CTX OBJECT (agrupado por dominio) ---
   const ctx = useMemo(() => ({
-    data: { projects, areaStats, ganttData, kpis },
+    data: { projects, areaStats, ganttData, kpis, productosTipo },
     active: { currentUser, role },
-    nav: { view, setView, selectedProject, setSelectedProject, selectedDoc, setSelectedDoc },
+    nav: {
+      view, setView,
+      selectedProject, setSelectedProject,
+      selectedDoc, setSelectedDoc,
+      selectedProductoTipo, setSelectedProductoTipo,
+      selectedPTDoc, setSelectedPTDoc,
+    },
     setters: {
       showOverdueModal, setShowOverdueModal,
       setShowNewProjectModal,
@@ -952,6 +1070,7 @@ export default function MayuApp() {
       editingDeadline, setEditingDeadline,
       commentText, setCommentText,
       chatMessage, setChatMessage,
+      ptChatMessage, setPtChatMessage,
       uploadingDocs,
     },
     fb: {
@@ -959,12 +1078,15 @@ export default function MayuApp() {
       handleFileUpload,
       handleSaveDeadline,
       handleSendMessage,
+      handlePTFileUpload,
+      handlePTDeleteFile,
+      handlePTSendMessage,
     },
   }), [
-    projects, areaStats, ganttData, kpis,
+    projects, areaStats, ganttData, kpis, productosTipo,
     currentUser, role,
-    view, selectedProject, selectedDoc,
-    showOverdueModal, editingDeadline, commentText, chatMessage, uploadingDocs,
+    view, selectedProject, selectedDoc, selectedProductoTipo, selectedPTDoc,
+    showOverdueModal, editingDeadline, commentText, chatMessage, ptChatMessage, uploadingDocs,
   ]);
 
   if (firebaseError) {
@@ -1055,6 +1177,9 @@ export default function MayuApp() {
               <span className="bg-[#DCA75D] text-white text-xs px-2 py-0.5 rounded-full shadow-sm">{kpis.myPendingApprovals}</span>
             )}
           </button>
+          <button onClick={() => {setView('productos_tipo'); setSelectedProject(null); setSelectedProductoTipo(null);}} className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${view === 'productos_tipo' ? 'bg-[#899264]/10 text-[#899264]' : 'text-slate-600 hover:bg-slate-50'}`}>
+            <Package size={18} /> Productos Tipo
+          </button>
         </aside>
 
         <main className="flex-1 p-6 overflow-y-auto">
@@ -1071,6 +1196,9 @@ export default function MayuApp() {
 
           {/* VIEW: MY APPROVALS */}
           {view === 'approvals' && <ApprovalsView ctx={ctx} />}
+
+          {/* VIEW: PRODUCTOS TIPO */}
+          {view === 'productos_tipo' && <ProductosTipoView ctx={ctx} />}
 
         </main>
       </div>
