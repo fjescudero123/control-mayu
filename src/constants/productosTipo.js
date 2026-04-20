@@ -58,4 +58,10 @@ export const PT_SEED = [
     description: 'Galpón industrial modular 15 × 30 metros',
     areas: buildAreas(),
   },
+  {
+    id: 'PT-BANOS-FV',
+    name: 'Baños FV',
+    description: 'Baños FV',
+    areas: buildAreas(),
+  },
 ];

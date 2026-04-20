@@ -176,15 +176,16 @@ export default function MayuApp() {
     onError: handleFbError,
   });
 
+  // Seed idempotente: escribe cualquier producto tipo de PT_SEED que falte
+  // en Firestore. Corre una sola vez tras el primer snapshot para evitar
+  // pisar cambios hechos en la UI entre renders.
   const ptSeededRef = useRef(false);
   useEffect(() => {
     if (!fbUser || !isDataLoaded) return;
     if (ptSeededRef.current) return;
-    // El hook retorna array vacío mientras carga y también cuando no hay docs.
-    // Esperamos un tick breve antes de seedear para evitar doble escritura.
-    if (productosTipo.length > 0) { ptSeededRef.current = true; return; }
     ptSeededRef.current = true;
-    PT_SEED.forEach(pt => {
+    const existingIds = new Set(productosTipo.map(p => p.id));
+    PT_SEED.filter(pt => !existingIds.has(pt.id)).forEach(pt => {
       setDoc(doc(getFbDb(), 'chk_productos_tipo', pt.id), pt).catch(err => {
         if (err.code === 'permission-denied') handleFbError(err);
       });
