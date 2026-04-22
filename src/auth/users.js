@@ -12,5 +12,6 @@ export const MOCK_USERS = {
   'fjerez': { password: '123', name: 'Felipe Jerez', role: 'Jefe de Producción', email: 'fjerez@imayu.cl', phone: '+56988275485' },
   'groman': { password: '123', name: 'Gabriel Roman', role: 'Jefe de Logística', email: 'groman@imayu.cl', phone: '+56974490582' },
   'mhernandez': { password: '123', name: 'Mauricio Hernandez', role: 'Jefe de Bodega', email: 'mhernandez@imayu.cl', phone: '+56900000000' },
-  'jquevedo': { password: '123', name: 'Jorge Quevedo', role: 'Encargado de Calidad', email: 'jquevedo@imayu.cl', phone: '+56900000000' }
+  'jquevedo': { password: '123', name: 'Jorge Quevedo', role: 'Encargado de Calidad', email: 'jquevedo@imayu.cl', phone: '+56900000000' },
+  'gelgueta': { password: '123', name: 'Guillermo Elgueta', role: 'Directorio', email: 'g.elgueta@imayu.cl', phone: '+56900000000' }
 };

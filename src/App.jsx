@@ -147,7 +147,9 @@ export default function MayuApp() {
         });
       } else {
         const loadedUsers = {};
+        const existingIds = new Set();
         snapshot.docs.forEach(d => {
+          existingIds.add(d.id);
           let userData = d.data();
 
           if (MOCK_USERS[d.id] && MOCK_USERS[d.id].phone !== '+56900000000') {
@@ -161,6 +163,15 @@ export default function MayuApp() {
 
           loadedUsers[d.id] = userData;
         });
+        // Seed idempotente: escribe cualquier MOCK_USER faltante en Firestore.
+        // Mantiene sincro con hub sin depender de que la coleccion este vacia.
+        Object.entries(MOCK_USERS)
+          .filter(([id]) => !existingIds.has(id))
+          .forEach(([id, u]) => {
+            setDoc(doc(usersColRef, id), u).catch(err => {
+              if(err.code === 'permission-denied') handleFbError(err);
+            });
+          });
         setUsersDb(loadedUsers);
         setIsDataLoaded(true);
       }
