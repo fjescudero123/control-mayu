@@ -2,7 +2,7 @@ import React from 'react';
 import {
   CheckSquare, CheckCircle2, XCircle, UploadCloud, Eye, History,
   MessageSquare, FileText, PlayCircle, Loader, Edit2, CalendarDays,
-  Send, Clock, AlertCircle, Trash2
+  Send, Clock, AlertCircle, Trash2, Plus
 } from 'lucide-react';
 import { APPROVERS } from '../constants/approvers';
 import StatusBadge from '../components/ui/StatusBadge';
@@ -13,7 +13,7 @@ export default function ProjectDetailView({ ctx }) {
   const { currentUser, role } = ctx.active;
   const { setView, selectedProject, selectedDoc, setSelectedDoc } = ctx.nav;
   const { editingDeadline, setEditingDeadline, commentText, setCommentText, chatMessage, setChatMessage, uploadingDocs } = ctx.setters;
-  const { handleSimulateAction, handleFileUpload, handleSaveDeadline, handleSendMessage } = ctx.fb;
+  const { handleSimulateAction, handleFileUpload, handleSaveDeadline, handleSendMessage, handleAddInstalacionDoc } = ctx.fb;
 
   const p = projects.find(proj => proj.id === selectedProject.id) || selectedProject;
 
@@ -73,7 +73,8 @@ export default function ProjectDetailView({ ctx }) {
                         role === 'Administrador del sistema' ||
                         (areaKey === 'comercial' && (role === p.commercialLead || role === 'Project Manager' || role === 'Subgerente Comercial' || role === 'Gerente Comercial')) ||
                         (areaKey === 'ingenieria' && (role === p.technicalLead || role === 'Project Manager' || role === 'Subgerente Comercial')) ||
-                        (areaKey === 'operaciones' && (role === p.operationalLead || role === 'Gerente de Operaciones' || role === 'Project Manager' || role === 'Subgerente Comercial'));
+                        (areaKey === 'operaciones' && (role === p.operationalLead || role === 'Gerente de Operaciones' || role === 'Project Manager' || role === 'Subgerente Comercial')) ||
+                        (areaKey === 'instalacion' && (role === 'Jefe de Logística' || role === 'Gerente de Operaciones' || role === 'Project Manager' || role === 'Subgerente Comercial'));
 
                       const isApprover = APPROVERS[areaKey.toUpperCase()]?.includes(role) || role === 'Administrador del sistema';
                       const needsMyApproval = doc.status === 'En revisión' && isApprover && doc.approvals[role] !== 'Aprobado' && doc.approvals[role] !== 'Aprobado con obs.';
@@ -187,6 +188,23 @@ export default function ProjectDetailView({ ctx }) {
                   </tbody>
                 </table>
               </div>
+
+              {areaKey === 'instalacion' && ['Gerente General', 'Subgerente Comercial', 'Project Manager', 'Jefe de Logística', 'Administrador del sistema'].includes(role) && (
+                <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex flex-wrap gap-2">
+                  <button
+                    onClick={() => handleAddInstalacionDoc(p.id, 'n4', 'Contrato de obras civiles')}
+                    className="text-xs text-[#788A87] hover:text-[#899264] flex items-center gap-1 px-3 py-1.5 rounded-md bg-white border border-slate-300 hover:border-[#899264] transition-colors"
+                  >
+                    <Plus size={14}/> Agregar contrato de obras civiles
+                  </button>
+                  <button
+                    onClick={() => handleAddInstalacionDoc(p.id, 'n5', 'Contrato de terminaciones')}
+                    className="text-xs text-[#788A87] hover:text-[#899264] flex items-center gap-1 px-3 py-1.5 rounded-md bg-white border border-slate-300 hover:border-[#899264] transition-colors"
+                  >
+                    <Plus size={14}/> Agregar contrato de terminaciones
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -250,7 +268,7 @@ export default function ProjectDetailView({ ctx }) {
                         >
                           Descargar Archivo
                         </a>
-                        {(role === selectedDoc.doc.uploaderRole || role === 'Administrador del sistema') && selectedDoc.doc.status !== 'Aprobado' && selectedDoc.doc.status !== 'Aprobado con observaciones' && (
+                        {['Gerente General', 'Subgerente Comercial', 'Project Manager', 'Administrador del sistema'].includes(role) && selectedDoc.doc.status !== 'Aprobado' && selectedDoc.doc.status !== 'Aprobado con observaciones' && (
                           <button
                             onClick={() => {
                               handleSimulateAction(selectedDoc.projectId, selectedDoc.areaKey, selectedDoc.doc.id, 'DELETE_FILE');

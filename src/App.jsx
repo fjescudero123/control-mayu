@@ -78,7 +78,8 @@ export default function MayuApp() {
   const [newProjectForm, setNewProjectForm] = useState({
     name: '', client: '', type: 'pods', startDate: '',
     commercialLead: 'Subgerente Comercial', technicalLead: 'Gerente de I+D y Producción',
-    operationalLead: 'Gerente de Operaciones', budget: '', margin: '', crmId: null
+    operationalLead: 'Gerente de Operaciones', budget: '', margin: '', crmId: null,
+    includeInstalacion: false
   });
 
   useEffect(() => { usersRef.current = usersDb; }, [usersDb]);
@@ -567,6 +568,13 @@ export default function MayuApp() {
       );
     } 
     else if (action === 'DELETE_FILE') {
+      // Solo GG, Subgerente Comercial (Emilio), Project Manager (José) y Admin
+      // pueden eliminar archivos. Defensa en profundidad por si alguien
+      // saltea el gate de UI vía DevTools.
+      if (!['Gerente General', 'Subgerente Comercial', 'Project Manager', 'Administrador del sistema'].includes(currentUser.role)) {
+        console.warn('[DELETE_FILE] denegado: rol no autorizado', currentUser.role);
+        return;
+      }
       if (document.fileUrl) {
         try {
           const fileRef = ref(getFbStorage(),document.fileUrl);
@@ -748,6 +756,13 @@ export default function MayuApp() {
   };
 
   const handleSaveDeadline = async (projectId, areaKey, docId, newDate) => {
+    // Solo GG, Subgerente Comercial (Emilio), Project Manager (José) y Admin
+    // pueden fijar/modificar fechas límite. Defensa en profundidad — la UI ya
+    // oculta el botón de edición a otros roles.
+    if (!['Gerente General', 'Subgerente Comercial', 'Project Manager', 'Administrador del sistema'].includes(currentUser.role)) {
+      console.warn('[handleSaveDeadline] denegado: rol no autorizado', currentUser.role);
+      return;
+    }
     const p = projects.find(proj => proj.id === projectId);
     if (!p) return;
 
@@ -809,6 +824,39 @@ export default function MayuApp() {
 
     setChatMessage('');
     setSelectedDoc({ ...selectedDoc, doc: document });
+  };
+
+  // Agrega un nuevo doc al área de Instalación con id auto-incrementado a partir
+  // de un prefijo (ej. 'n4' → 'n4-2', 'n4-3'). Usado para que Gabriel/PM/Subgte
+  // puedan sumar contratos de obras civiles o de terminaciones (1 o más).
+  const handleAddInstalacionDoc = async (projectId, idPrefix, baseName) => {
+    if (!['Gerente General', 'Subgerente Comercial', 'Project Manager', 'Jefe de Logística', 'Administrador del sistema'].includes(currentUser.role)) {
+      console.warn('[handleAddInstalacionDoc] denegado: rol no autorizado', currentUser.role);
+      return;
+    }
+    const p = projects.find(proj => proj.id === projectId);
+    if (!p || !p.areas?.instalacion) return;
+
+    const docs = p.areas.instalacion.docs;
+    let maxN = 1;
+    docs.forEach(d => {
+      if (d.id === idPrefix) return;
+      const m = d.id.match(new RegExp(`^${idPrefix}-(\\d+)$`));
+      if (m) maxN = Math.max(maxN, parseInt(m[1], 10));
+    });
+    const nextN = maxN + 1;
+    const newDoc = {
+      id: `${idPrefix}-${nextN}`,
+      name: `${baseName} (${nextN})`,
+      status: 'Pendiente', version: '-', uploaderRole: 'Jefe de Logística',
+      approvals: {}, history: [], deadline: null, deadlineVersion: 0, messages: []
+    };
+
+    const updatedDocs = [...docs, newDoc];
+    let updatedProject = { ...p, areas: { ...p.areas, instalacion: { ...p.areas.instalacion, docs: updatedDocs } } };
+    updatedProject = recalculateProjectStatus(updatedProject);
+    await setDoc(doc(getFbDb(),'chk_projects', updatedProject.id), updatedProject);
+    if (selectedProject?.id === projectId) setSelectedProject(updatedProject);
   };
 
   const confirmDeleteProject = async () => {
@@ -919,11 +967,28 @@ export default function MayuApp() {
         }
       };
 
+      // --- LOGICA INSTALACIÓN (solo Momentum opt-in) ---
+      // Checklist responsabilidad de Gabriel Roman (Jefe de Logística).
+      // n4/n5 son las semillas de "1 o más"; se pueden agregar más con
+      // handleAddInstalacionDoc desde el detalle del proyecto.
+      if (newProjectForm.type.toLowerCase() === 'momentum' && newProjectForm.includeInstalacion) {
+        newProject.areas.instalacion = {
+          name: 'Instalación', status: 'No iniciada',
+          docs: [
+            createDoc('n1', 'Carta Gantt obra', 'Jefe de Logística'),
+            createDoc('n2', 'Listado de subcontratos', 'Jefe de Logística'),
+            createDoc('n3', 'Nómina de personas en obra', 'Jefe de Logística'),
+            createDoc('n4', 'Contrato de obras civiles', 'Jefe de Logística'),
+            createDoc('n5', 'Contrato de terminaciones', 'Jefe de Logística'),
+          ]
+        };
+      }
+
       newProject = recalculateProjectStatus(newProject);
       await setDoc(doc(getFbDb(),'chk_projects', newProject.id), newProject);
 
       setShowNewProjectModal(false);
-      setNewProjectForm({ name: '', client: '', type: 'pods', startDate: '', commercialLead: 'Subgerente Comercial', technicalLead: 'Gerente de I+D y Producción', operationalLead: 'Gerente de Operaciones', budget: '', margin: '', crmId: null });
+      setNewProjectForm({ name: '', client: '', type: 'pods', startDate: '', commercialLead: 'Subgerente Comercial', technicalLead: 'Gerente de I+D y Producción', operationalLead: 'Gerente de Operaciones', budget: '', margin: '', crmId: null, includeInstalacion: false });
       setSelectedProject(newProject);
       setView('project_detail');
     } catch (error) {
@@ -1216,6 +1281,7 @@ export default function MayuApp() {
       handleFileUpload,
       handleSaveDeadline,
       handleSendMessage,
+      handleAddInstalacionDoc,
       handlePTFileUpload,
       handlePTDeleteFile,
       handlePTSendMessage,
@@ -1453,6 +1519,25 @@ export default function MayuApp() {
                     </select>
                   </div>
                 </div>
+
+                {newProjectForm.type.toLowerCase() === 'momentum' && (
+                  <div className="mt-4 bg-[#DCA75D]/10 border border-[#DCA75D]/30 rounded-lg p-4">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!newProjectForm.includeInstalacion}
+                        onChange={e => setNewProjectForm({...newProjectForm, includeInstalacion: e.target.checked})}
+                        className="mt-1 h-4 w-4 rounded border-slate-300 text-[#899264] focus:ring-[#899264]"
+                      />
+                      <div>
+                        <div className="text-sm font-semibold text-slate-800">Incluir checklist de Instalación</div>
+                        <div className="text-xs text-slate-600 mt-1">
+                          Agrega un área "Instalación" responsabilidad de Jefe de Logística (Gabriel Roman) con: Carta Gantt obra, Listado de subcontratos, Nómina de personas en obra, Contrato de obras civiles y Contrato de terminaciones. Los dos últimos pueden duplicarse después si se requieren más.
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                )}
               </form>
             </div>
             
