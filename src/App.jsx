@@ -302,6 +302,38 @@ export default function MayuApp() {
     });
   }, [fbUser, isDataLoaded, projectsRaw]);
 
+  // Migración idempotente: agrega 'Cubicación del proyecto' (o3) al checklist
+  // de Operaciones para todo proyecto Momentum existente que no la tenga.
+  // Los proyectos no-Momentum no se tocan.
+  const opsCubicacionMigratedRef = useRef(false);
+  useEffect(() => {
+    if (!fbUser || !isDataLoaded) return;
+    if (!projectsRaw || projectsRaw.length === 0) return;
+    if (opsCubicacionMigratedRef.current) return;
+    opsCubicacionMigratedRef.current = true;
+
+    projectsRaw.forEach(p => {
+      if ((p.type || '').toLowerCase() !== 'momentum') return;
+      const opsDocs = p.areas?.operaciones?.docs;
+      if (!Array.isArray(opsDocs)) return;
+      if (opsDocs.some(d => d.id === 'o3')) return;
+
+      const newDoc = {
+        id: 'o3', name: 'Cubicación del proyecto', status: 'Pendiente', version: '-',
+        uploaderRole: p.operationalLead || 'Gerente de Operaciones',
+        approvals: {}, history: [], deadline: null, deadlineVersion: 0, messages: []
+      };
+      const updatedDocs = [...opsDocs, newDoc];
+      const updatedProject = recalculateProjectStatus({
+        ...p,
+        areas: { ...p.areas, operaciones: { ...p.areas.operaciones, docs: updatedDocs } }
+      });
+      setDoc(doc(getFbDb(), 'chk_projects', p.id), updatedProject).catch(err => {
+        if (err.code === 'permission-denied') handleFbError(err);
+      });
+    });
+  }, [fbUser, isDataLoaded, projectsRaw]);
+
   // Storage uploads para productos tipo (basePath separado del de proyectos).
   const { upload: uploadPTFile } = useStorageUpload('chk_productos_tipo');
 
@@ -967,12 +999,20 @@ export default function MayuApp() {
         createDoc('c2', 'Cronograma de entregas', newProjectForm.commercialLead)
       ];
 
+      let docsOperaciones = [
+        createDoc('o1', 'Plan de despachos', newProjectForm.operationalLead),
+        createDoc('o2', 'Carta Gantt de compras de materia prima', newProjectForm.operationalLead)
+      ];
+
       if (newProjectForm.type.toLowerCase() === 'momentum') {
         docsComercial.push(
           createDoc('c3', 'Carpeta ingreso permiso', newProjectForm.commercialLead),
           createDoc('c4', 'Permiso de edificación', newProjectForm.commercialLead),
           createDoc('c5', 'Ingreso SERVIU', newProjectForm.commercialLead),
           createDoc('c6', 'Planos de terreno', newProjectForm.commercialLead)
+        );
+        docsOperaciones.push(
+          createDoc('o3', 'Cubicación del proyecto', newProjectForm.operationalLead)
         );
       }
 
@@ -1008,10 +1048,7 @@ export default function MayuApp() {
           },
           operaciones: {
             name: 'Operaciones', status: 'No iniciada',
-            docs: [
-              createDoc('o1', 'Plan de despachos', newProjectForm.operationalLead),
-              createDoc('o2', 'Carta Gantt de compras de materia prima', newProjectForm.operationalLead)
-            ]
+            docs: docsOperaciones
           },
           finanzas: {
             name: 'Finanzas', status: 'No iniciada',

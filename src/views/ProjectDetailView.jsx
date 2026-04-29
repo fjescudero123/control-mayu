@@ -89,7 +89,7 @@ export default function ProjectDetailView({ ctx }) {
                         role === 'Administrador del sistema' ||
                         (areaKey === 'comercial' && (role === p.commercialLead || role === 'Project Manager' || role === 'Subgerente Comercial' || role === 'Gerente Comercial')) ||
                         (areaKey === 'ingenieria' && (role === p.technicalLead || role === 'Project Manager' || role === 'Subgerente Comercial')) ||
-                        (areaKey === 'operaciones' && (role === p.operationalLead || role === 'Gerente de Operaciones' || role === 'Project Manager' || role === 'Subgerente Comercial')) ||
+                        (areaKey === 'operaciones' && (role === p.operationalLead || role === 'Gerente de Operaciones' || role === 'Jefe de Logística' || role === 'Project Manager' || role === 'Subgerente Comercial')) ||
                         (areaKey === 'instalacion' && (role === 'Jefe de Logística' || role === 'Gerente de Operaciones' || role === 'Project Manager' || role === 'Subgerente Comercial'));
 
                       const isApprover = APPROVERS[areaKey.toUpperCase()]?.includes(role) || role === 'Administrador del sistema';
