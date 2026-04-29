@@ -13,7 +13,7 @@ export default function ProjectDetailView({ ctx }) {
   const { currentUser, role } = ctx.active;
   const { setView, selectedProject, selectedDoc, setSelectedDoc } = ctx.nav;
   const { editingDeadline, setEditingDeadline, commentText, setCommentText, chatMessage, setChatMessage, uploadingDocs } = ctx.setters;
-  const { handleSimulateAction, handleFileUpload, handleSaveDeadline, handleSendMessage, handleAddInstalacionDoc } = ctx.fb;
+  const { handleSimulateAction, handleFileUpload, handleSaveDeadline, handleSendMessage, handleAddInstalacionDoc, handleActivateInstalacion } = ctx.fb;
 
   const p = projects.find(proj => proj.id === selectedProject.id) || selectedProject;
 
@@ -47,6 +47,22 @@ export default function ProjectDetailView({ ctx }) {
         </div>
 
         <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800"><CheckSquare size={20} className="text-[#899264]"/> Checklist de Aprobación por Área</h3>
+
+        {p.type?.toLowerCase() === 'momentum' && !p.areas?.instalacion &&
+         ['Gerente General', 'Subgerente Comercial', 'Project Manager', 'Administrador del sistema'].includes(role) && (
+          <div className="mb-6 bg-[#DCA75D]/10 border border-[#DCA75D]/30 rounded-lg p-4 flex items-center justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold text-slate-800">Checklist de Instalación no activado</div>
+              <div className="text-xs text-slate-600 mt-1">Proyecto Momentum sin área de Instalación. Si quieres incluirla (responsabilidad Jefe de Logística — Gabriel Roman), actívala aquí. Se sumarán Carta Gantt obra, Listado de subcontratos, Nómina de personas en obra y los contratos de obras civiles / terminaciones.</div>
+            </div>
+            <button
+              onClick={() => handleActivateInstalacion(p.id)}
+              className="bg-[#DCA75D] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#c49352] transition-colors shadow-sm flex items-center gap-2 whitespace-nowrap"
+            >
+              <Plus size={16}/> Activar
+            </button>
+          </div>
+        )}
 
         <div className="flex flex-col gap-6">
           {Object.entries(p.areas || {}).map(([areaKey, area]) => (

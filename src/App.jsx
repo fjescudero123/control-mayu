@@ -204,14 +204,12 @@ export default function MayuApp() {
     });
   }, [fbUser, isDataLoaded, productosTipo]);
 
-  // Migración idempotente del checklist de Ingeniería y Producción (29 abr 2026).
-  // Reemplaza i2 (Planos de fabricación del proyecto) por 6 sub-entregables,
-  // elimina i6 (Planos de especialidades) y suma planos originales eléctricos
-  // y sanitarios. Reordena los docs al layout nuevo en todos los proyectos.
-  // Lo aprobado se preserva intacto: solo se agregan los entregables nuevos
-  // (i9..i16) en estado 'Pendiente' para forzar su carga. i2/i6 se eliminan
-  // del listado solo si están en 'Pendiente'; si tienen archivo o aprobaciones
-  // se mueven al final intactos para que el usuario decida.
+  // Migración idempotente del checklist de Ingeniería y Producción.
+  // PODs: usan el layout nuevo granular (i9..i16: originales + 6 fab subitems).
+  // No-PODs (Momentum, galpones, soluciones, etc.): mantienen el layout legacy
+  // de 8 entregables (i1..i8). Si la migración previa les coló i9..i16 por
+  // error, ésta los limpia y restaura i2/i6 si faltaban.
+  // Lo aprobado se preserva intacto en ambos casos.
   const ingChecklistMigratedRef = useRef(false);
   useEffect(() => {
     if (!fbUser || !isDataLoaded) return;
@@ -219,8 +217,8 @@ export default function MayuApp() {
     if (ingChecklistMigratedRef.current) return;
     ingChecklistMigratedRef.current = true;
 
-    // Layout objetivo (ids canónicos + nombres actualizados).
-    const NEW_LAYOUT = [
+    // Layout PODs (granular): replaces el i2 monolítico por 6 sub-fab + suma originales.
+    const POD_LAYOUT = [
       { id: 'i1',  name: 'BOM (Bill of Materials)' },
       { id: 'i3',  name: 'Planos de arquitectura' },
       { id: 'i9',  name: 'Planos originales eléctricos' },
@@ -236,7 +234,19 @@ export default function MayuApp() {
       { id: 'i5',  name: 'Carta Gantt de fabricación' },
       { id: 'i8',  name: 'Protocolo de transporte' },
     ];
-    const LEGACY_REMOVE = ['i2', 'i6'];
+    // Layout legacy: lo que tenían antes los 8 docs originales (Momentum y resto).
+    const LEGACY_LAYOUT = [
+      { id: 'i1', name: 'BOM (Bill of Materials)' },
+      { id: 'i2', name: 'Planos de fabricación del proyecto' },
+      { id: 'i3', name: 'Planos de arquitectura' },
+      { id: 'i4', name: 'Carta Gantt de desarrollo' },
+      { id: 'i5', name: 'Carta Gantt de fabricación' },
+      { id: 'i6', name: 'Planos de especialidades' },
+      { id: 'i7', name: 'Planos de montaje' },
+      { id: 'i8', name: 'Protocolo de transporte' },
+    ];
+    const POD_ONLY_IDS = ['i9', 'i10', 'i11', 'i12', 'i13', 'i14', 'i15', 'i16'];
+    const POD_LEGACY_REMOVE = ['i2', 'i6']; // PODs descartan i2/i6 Pendiente; conservan al final si tienen avance
 
     const blankDoc = (id, name, role = 'Equipo de Diseño') => ({
       id, name, status: 'Pendiente', version: '-', uploaderRole: role,
@@ -246,22 +256,35 @@ export default function MayuApp() {
     projectsRaw.forEach(p => {
       const ingDocs = p.areas?.ingenieria?.docs;
       if (!Array.isArray(ingDocs)) return;
+      const isPod = (p.type || '').toLowerCase() === 'pods';
       const byId = Object.fromEntries(ingDocs.map(d => [d.id, d]));
 
-      // Reordenar al layout nuevo, agregar faltantes en Pendiente, no tocar
+      const layout = isPod ? POD_LAYOUT : LEGACY_LAYOUT;
+
+      // Reordenar al layout objetivo, agregar faltantes en Pendiente, conservar
       // datos de los docs existentes (solo refrescar nombre si cambió).
-      const newDocs = NEW_LAYOUT.map(layout => {
-        const prev = byId[layout.id];
-        if (!prev) return blankDoc(layout.id, layout.name);
-        return prev.name !== layout.name ? { ...prev, name: layout.name } : prev;
+      const newDocs = layout.map(slot => {
+        const prev = byId[slot.id];
+        if (!prev) return blankDoc(slot.id, slot.name);
+        return prev.name !== slot.name ? { ...prev, name: slot.name } : prev;
       });
 
-      // i2/i6: si están en Pendiente se descartan; si tienen avance se
-      // mueven al final intactos para que el usuario los revise manualmente.
-      LEGACY_REMOVE.forEach(legacyId => {
-        const legacy = byId[legacyId];
-        if (legacy && legacy.status !== 'Pendiente') newDocs.push(legacy);
-      });
+      if (isPod) {
+        // PODs: i2/i6 si están en Pendiente se descartan; si tienen avance
+        // se mueven al final intactos para que el usuario los revise.
+        POD_LEGACY_REMOVE.forEach(legacyId => {
+          const legacy = byId[legacyId];
+          if (legacy && legacy.status !== 'Pendiente') newDocs.push(legacy);
+        });
+      } else {
+        // No-PODs: limpia los i9..i16 que se hayan colado por la migración
+        // anterior. Si están en Pendiente se descartan silenciosamente; si
+        // tienen avance (raro en Momentum) se mueven al final para auditoría.
+        POD_ONLY_IDS.forEach(podId => {
+          const podDoc = byId[podId];
+          if (podDoc && podDoc.status !== 'Pendiente') newDocs.push(podDoc);
+        });
+      }
 
       // Detectar cambios reales antes de escribir.
       const sameOrder = ingDocs.length === newDocs.length &&
@@ -826,6 +849,44 @@ export default function MayuApp() {
     setSelectedDoc({ ...selectedDoc, doc: document });
   };
 
+  // Activa el área "Instalación" en un proyecto Momentum existente que no la
+  // tenga (cuando se creó sin marcar el toggle, o cuando se migró desde un
+  // proyecto previo a la feature). Idempotente: si ya existe, no hace nada.
+  const handleActivateInstalacion = async (projectId) => {
+    if (!['Gerente General', 'Subgerente Comercial', 'Project Manager', 'Administrador del sistema'].includes(currentUser.role)) {
+      console.warn('[handleActivateInstalacion] denegado: rol no autorizado', currentUser.role);
+      return;
+    }
+    const p = projects.find(proj => proj.id === projectId);
+    if (!p) return;
+    if (p.areas?.instalacion) return;
+
+    const blankInstaDoc = (id, name) => ({
+      id, name, status: 'Pendiente', version: '-', uploaderRole: 'Jefe de Logística',
+      approvals: {}, history: [], deadline: null, deadlineVersion: 0, messages: []
+    });
+
+    let updatedProject = {
+      ...p,
+      areas: {
+        ...p.areas,
+        instalacion: {
+          name: 'Instalación', status: 'No iniciada',
+          docs: [
+            blankInstaDoc('n1', 'Carta Gantt obra'),
+            blankInstaDoc('n2', 'Listado de subcontratos'),
+            blankInstaDoc('n3', 'Nómina de personas en obra'),
+            blankInstaDoc('n4', 'Contrato de obras civiles'),
+            blankInstaDoc('n5', 'Contrato de terminaciones'),
+          ]
+        }
+      }
+    };
+    updatedProject = recalculateProjectStatus(updatedProject);
+    await setDoc(doc(getFbDb(),'chk_projects', updatedProject.id), updatedProject);
+    if (selectedProject?.id === projectId) setSelectedProject(updatedProject);
+  };
+
   // Agrega un nuevo doc al área de Instalación con id auto-incrementado a partir
   // de un prefijo (ej. 'n4' → 'n4-2', 'n4-3'). Usado para que Gabriel/PM/Subgte
   // puedan sumar contratos de obras civiles o de terminaciones (1 o más).
@@ -1282,6 +1343,7 @@ export default function MayuApp() {
       handleSaveDeadline,
       handleSendMessage,
       handleAddInstalacionDoc,
+      handleActivateInstalacion,
       handlePTFileUpload,
       handlePTDeleteFile,
       handlePTSendMessage,
