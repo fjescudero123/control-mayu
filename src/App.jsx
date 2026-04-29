@@ -584,6 +584,51 @@ export default function MayuApp() {
       document.lastReminderSentAt = null;
       document.history = [{date: nowString, user: currentUser.name, action: `Eliminó el archivo anterior para permitir subir nueva versión.`}, ...document.history];
     }
+    else if (action === 'RESPOND_OBSERVATION') {
+      // Subsanación sin necesidad de subir nueva versión: el uploader responde
+      // a la observación, las objeciones de los aprobadores se limpian para
+      // que re-decidan, y el doc vuelve a 'En revisión'. Las aprobaciones
+      // previas se preservan (solo se limpia 'Observado' / 'Rechazado').
+      const observersToNotify = Object.entries(document.approvals || {})
+        .filter(([, st]) => st === 'Observado' || st === 'Rechazado')
+        .map(([appr]) => appr);
+
+      const newApprovals = { ...document.approvals };
+      Object.keys(newApprovals).forEach(appr => {
+        if (newApprovals[appr] === 'Observado' || newApprovals[appr] === 'Rechazado') {
+          delete newApprovals[appr];
+        }
+      });
+      document.approvals = newApprovals;
+      document.status = 'En revisión';
+      document.reviewStartDate = now.toISOString();
+      document.lastReminderSentAt = null;
+      document.lastDeadlineReminderSentAt = null;
+
+      const responseText = comment ? comment.trim() : '';
+      document.history = [{
+        date: nowString,
+        user: currentUser.name,
+        action: responseText ? `Subsanó observación. Comentario: "${responseText}"` : 'Subsanó observación.'
+      }, ...document.history];
+
+      if (responseText) {
+        document.messages = [...(document.messages || []), {
+          id: `msg-${now.getTime()}`,
+          user: currentUser.name,
+          timestamp: now.toISOString(),
+          text: `Subsanación de observación: ${responseText}`
+        }];
+      }
+
+      if (observersToNotify.length > 0) {
+        sendWhatsAppNotification(
+          observersToNotify,
+          `📝 OBSERVACIÓN SUBSANADA`,
+          `*${currentUser.name}* respondió a la observación en *${document.name}* (Versión ${document.version}) del proyecto *${p.name}*.\n\n*Respuesta:* "${responseText || '(sin texto)'}"\n\nPor favor, ingresa a la plataforma para revisar y aprobar.`
+        );
+      }
+    }
     else if (['APPROVE', 'APPROVE_WITH_OBS', 'REJECT', 'OBSERVE'].includes(action)) {
       
       let actionStatus = 'Observado';

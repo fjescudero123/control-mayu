@@ -288,6 +288,33 @@ export default function ProjectDetailView({ ctx }) {
                   </ul>
                 </div>
 
+                {(role === selectedDoc.doc.uploaderRole || role === 'Administrador del sistema') &&
+                 selectedDoc.doc.status === 'Observado' && (
+                  <div className="bg-[#DCA75D]/10 p-4 rounded-xl border border-[#DCA75D]/30 mb-4">
+                    <h4 className="text-sm font-bold text-slate-800 mb-2 flex items-center gap-2">
+                      <MessageSquare size={16} className="text-[#DCA75D]"/> Responder observación
+                    </h4>
+                    <p className="text-xs text-slate-600 mb-3">
+                      Si la observación se resolvió sin necesidad de subir un archivo nuevo, escribe tu respuesta y márcala como subsanada. Los aprobadores que observaron volverán a recibir el doc para que decidan.
+                    </p>
+                    <textarea
+                      className="w-full text-sm p-3 border border-slate-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-[#DCA75D]"
+                      rows="3"
+                      placeholder="Explica cómo se resolvió la observación..."
+                      value={commentText}
+                      onChange={e => setCommentText(e.target.value)}
+                    ></textarea>
+                    <button
+                      onClick={() => handleSimulateAction(selectedDoc.projectId, selectedDoc.areaKey, selectedDoc.doc.id, 'RESPOND_OBSERVATION', commentText)}
+                      disabled={!commentText.trim()}
+                      className={`w-full bg-[#DCA75D] text-white py-2 rounded-lg text-sm font-medium flex justify-center items-center gap-2 ${!commentText.trim() ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#c49352]'}`}
+                      title={!commentText.trim() ? 'Requiere respuesta' : ''}
+                    >
+                      <CheckCircle2 size={18} /> Marcar como subsanada
+                    </button>
+                  </div>
+                )}
+
                 {APPROVERS[selectedDoc.areaKey.toUpperCase()]?.includes(role) &&
                  ['En revisión', 'Observado'].includes(selectedDoc.doc.status) && (
                   <div className="bg-[#899264]/10 p-4 rounded-xl border border-[#899264]/20">
