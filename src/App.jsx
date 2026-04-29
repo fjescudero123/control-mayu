@@ -203,6 +203,81 @@ export default function MayuApp() {
     });
   }, [fbUser, isDataLoaded, productosTipo]);
 
+  // Migración idempotente del checklist de Ingeniería y Producción (29 abr 2026).
+  // Reemplaza i2 (Planos de fabricación del proyecto) por 6 sub-entregables,
+  // elimina i6 (Planos de especialidades) y suma planos originales eléctricos
+  // y sanitarios. Reordena los docs al layout nuevo en todos los proyectos.
+  // Lo aprobado se preserva intacto: solo se agregan los entregables nuevos
+  // (i9..i16) en estado 'Pendiente' para forzar su carga. i2/i6 se eliminan
+  // del listado solo si están en 'Pendiente'; si tienen archivo o aprobaciones
+  // se mueven al final intactos para que el usuario decida.
+  const ingChecklistMigratedRef = useRef(false);
+  useEffect(() => {
+    if (!fbUser || !isDataLoaded) return;
+    if (!projectsRaw || projectsRaw.length === 0) return;
+    if (ingChecklistMigratedRef.current) return;
+    ingChecklistMigratedRef.current = true;
+
+    // Layout objetivo (ids canónicos + nombres actualizados).
+    const NEW_LAYOUT = [
+      { id: 'i1',  name: 'BOM (Bill of Materials)' },
+      { id: 'i3',  name: 'Planos de arquitectura' },
+      { id: 'i9',  name: 'Planos originales eléctricos' },
+      { id: 'i10', name: 'Planos originales sanitarios' },
+      { id: 'i11', name: 'Planos de fabricación — tarima' },
+      { id: 'i12', name: 'Planos de fabricación — estructura' },
+      { id: 'i13', name: 'Planos de fabricación — tabiques' },
+      { id: 'i14', name: 'Planos de fabricación — eléctrico' },
+      { id: 'i15', name: 'Planos de fabricación — sanitario' },
+      { id: 'i16', name: 'Planos de fabricación — terminaciones' },
+      { id: 'i7',  name: 'Planos de montaje' },
+      { id: 'i4',  name: 'Carta Gantt de desarrollo' },
+      { id: 'i5',  name: 'Carta Gantt de fabricación' },
+      { id: 'i8',  name: 'Protocolo de transporte' },
+    ];
+    const LEGACY_REMOVE = ['i2', 'i6'];
+
+    const blankDoc = (id, name, role = 'Equipo de Diseño') => ({
+      id, name, status: 'Pendiente', version: '-', uploaderRole: role,
+      approvals: {}, history: [], deadline: null, deadlineVersion: 0, messages: []
+    });
+
+    projectsRaw.forEach(p => {
+      const ingDocs = p.areas?.ingenieria?.docs;
+      if (!Array.isArray(ingDocs)) return;
+      const byId = Object.fromEntries(ingDocs.map(d => [d.id, d]));
+
+      // Reordenar al layout nuevo, agregar faltantes en Pendiente, no tocar
+      // datos de los docs existentes (solo refrescar nombre si cambió).
+      const newDocs = NEW_LAYOUT.map(layout => {
+        const prev = byId[layout.id];
+        if (!prev) return blankDoc(layout.id, layout.name);
+        return prev.name !== layout.name ? { ...prev, name: layout.name } : prev;
+      });
+
+      // i2/i6: si están en Pendiente se descartan; si tienen avance se
+      // mueven al final intactos para que el usuario los revise manualmente.
+      LEGACY_REMOVE.forEach(legacyId => {
+        const legacy = byId[legacyId];
+        if (legacy && legacy.status !== 'Pendiente') newDocs.push(legacy);
+      });
+
+      // Detectar cambios reales antes de escribir.
+      const sameOrder = ingDocs.length === newDocs.length &&
+        ingDocs.every((d, i) => d.id === newDocs[i]?.id);
+      const sameContent = sameOrder && ingDocs.every((d, i) => d.name === newDocs[i]?.name);
+      if (sameContent) return;
+
+      const updatedProject = recalculateProjectStatus({
+        ...p,
+        areas: { ...p.areas, ingenieria: { ...p.areas.ingenieria, docs: newDocs } }
+      });
+      setDoc(doc(getFbDb(), 'chk_projects', p.id), updatedProject).catch(err => {
+        if (err.code === 'permission-denied') handleFbError(err);
+      });
+    });
+  }, [fbUser, isDataLoaded, projectsRaw]);
+
   // Storage uploads para productos tipo (basePath separado del de proyectos).
   const { upload: uploadPTFile } = useStorageUpload('chk_productos_tipo');
 
@@ -762,12 +837,18 @@ export default function MayuApp() {
             name: 'Ingeniería y Producción', status: 'No iniciada',
             docs: [
               createDoc('i1', 'BOM (Bill of Materials)', 'Equipo de Diseño'),
-              createDoc('i2', 'Planos de fabricación del proyecto', 'Equipo de Diseño'),
               createDoc('i3', 'Planos de arquitectura', 'Equipo de Diseño'),
+              createDoc('i9', 'Planos originales eléctricos', 'Equipo de Diseño'),
+              createDoc('i10', 'Planos originales sanitarios', 'Equipo de Diseño'),
+              createDoc('i11', 'Planos de fabricación — tarima', 'Equipo de Diseño'),
+              createDoc('i12', 'Planos de fabricación — estructura', 'Equipo de Diseño'),
+              createDoc('i13', 'Planos de fabricación — tabiques', 'Equipo de Diseño'),
+              createDoc('i14', 'Planos de fabricación — eléctrico', 'Equipo de Diseño'),
+              createDoc('i15', 'Planos de fabricación — sanitario', 'Equipo de Diseño'),
+              createDoc('i16', 'Planos de fabricación — terminaciones', 'Equipo de Diseño'),
+              createDoc('i7', 'Planos de montaje', 'Equipo de Diseño'),
               createDoc('i4', 'Carta Gantt de desarrollo', newProjectForm.technicalLead),
               createDoc('i5', 'Carta Gantt de fabricación', 'Jefe de Producción'),
-              createDoc('i6', 'Planos de especialidades', 'Equipo de Diseño'),
-              createDoc('i7', 'Planos de montaje', 'Equipo de Diseño'),
               createDoc('i8', 'Protocolo de transporte', newProjectForm.technicalLead)
             ]
           },
