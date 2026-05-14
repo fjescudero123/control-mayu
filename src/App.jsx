@@ -15,7 +15,7 @@ if (typeof document !== 'undefined' && !document.getElementById('tailwind-cdn'))
 
 // --- FIREBASE ---
 import { getFbDb, getFbStorage } from './firebase';
-import { collection, doc, setDoc, deleteDoc, onSnapshot, getDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, getDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 
 // --- IMPORTS EXTRAÍDOS ---
@@ -1108,8 +1108,21 @@ export default function MayuApp() {
       return;
     }
     
-    const updatedUser = { ...usersDb[currentUser.id], password: passwordForm.new };
+    const updatedUser = {
+      ...usersDb[currentUser.id],
+      password: passwordForm.new,
+      mustChangePassword: false,
+      passwordChangedAt: serverTimestamp(),
+      passwordChangedBy: currentUser.id,
+    };
     await setDoc(doc(getFbDb(),'chk_users', currentUser.id), updatedUser);
+    const nextCurrentUser = {
+      ...currentUser,
+      password: passwordForm.new,
+      mustChangePassword: false,
+    };
+    setCurrentUser(nextCurrentUser);
+    localStorage.setItem('mayu_session', JSON.stringify(nextCurrentUser));
     
     setPasswordForm({ current: '', new: '', confirm: '', error: '', success: '¡Contraseña actualizada con éxito!' });
     setTimeout(() => {
