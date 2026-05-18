@@ -171,7 +171,7 @@ export default function ProjectDetailView({ ctx }) {
 
                         <td className="px-5 py-4 text-right">
                           <div className="flex justify-end gap-2">
-                            {doc.id === 'i1' && canUpload && (
+                            {doc.id === 'i1' && (
                               <button
                                 onClick={handleDownloadBomTemplate}
                                 disabled={downloadingTemplate}
