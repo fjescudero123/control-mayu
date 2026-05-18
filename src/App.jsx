@@ -188,6 +188,15 @@ export default function MayuApp() {
     onError: handleFbError,
   });
 
+  // inv_catalogo — SKUs activos de Bodega. Lo usamos solo para generar la
+  // plantilla del BOM con dropdown contra catalogo real. Lectura seca,
+  // sin escribir desde Control Documental.
+  const { data: invCatalogo } = useFirestoreCollection('inv_catalogo', {
+    transform: d => ({ ...d.data(), code: d.id }),
+    enabled: !!fbUser,
+    onError: handleFbError,
+  });
+
   // Seed idempotente: escribe cualquier producto tipo de PT_SEED que falte
   // en Firestore. Corre una sola vez tras el primer snapshot para evitar
   // pisar cambios hechos en la UI entre renders.
@@ -1368,7 +1377,7 @@ export default function MayuApp() {
 
   // --- CTX OBJECT (agrupado por dominio) ---
   const ctx = useMemo(() => ({
-    data: { projects, areaStats, ganttData, kpis, productosTipo },
+    data: { projects, areaStats, ganttData, kpis, productosTipo, invCatalogo },
     active: { currentUser, role },
     nav: {
       view, setView,
@@ -1399,7 +1408,7 @@ export default function MayuApp() {
       handlePTSendMessage,
     },
   }), [
-    projects, areaStats, ganttData, kpis, productosTipo,
+    projects, areaStats, ganttData, kpis, productosTipo, invCatalogo,
     currentUser, role,
     view, selectedProject, selectedDoc, selectedProductoTipo, selectedPTDoc,
     showOverdueModal, editingDeadline, commentText, chatMessage, ptChatMessage, uploadingDocs,

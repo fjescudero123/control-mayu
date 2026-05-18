@@ -1,21 +1,44 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   CheckSquare, CheckCircle2, XCircle, UploadCloud, Eye, History,
   MessageSquare, FileText, PlayCircle, Loader, Edit2, CalendarDays,
-  Send, Clock, AlertCircle, Trash2, Plus
+  Send, Clock, AlertCircle, Trash2, Plus, Download
 } from 'lucide-react';
 import { APPROVERS } from '../constants/approvers';
 import StatusBadge from '../components/ui/StatusBadge';
 import MayuLogo from '../components/ui/MayuLogo';
+import { generateBomTemplate, triggerDownload } from '../services/bomTemplate';
 
 export default function ProjectDetailView({ ctx }) {
-  const { projects } = ctx.data;
+  const { projects, invCatalogo } = ctx.data;
   const { currentUser, role } = ctx.active;
   const { setView, selectedProject, selectedDoc, setSelectedDoc } = ctx.nav;
   const { editingDeadline, setEditingDeadline, commentText, setCommentText, chatMessage, setChatMessage, uploadingDocs } = ctx.setters;
   const { handleSimulateAction, handleFileUpload, handleSaveDeadline, handleSendMessage, handleAddInstalacionDoc, handleActivateInstalacion } = ctx.fb;
 
   const p = projects.find(proj => proj.id === selectedProject.id) || selectedProject;
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+
+  const handleDownloadBomTemplate = async () => {
+    if (downloadingTemplate) return;
+    setDownloadingTemplate(true);
+    try {
+      const { blob, fileName, catalogoCount } = await generateBomTemplate({
+        catalogo: invCatalogo || [],
+        projectName: p.name,
+        projectType: p.type,
+      });
+      triggerDownload(blob, fileName);
+      if (catalogoCount === 0) {
+        alert('Plantilla generada, pero la hoja Catalogo quedo vacia (no se cargaron SKU de Bodega). Avisa a soporte: el dropdown no funcionara.');
+      }
+    } catch (e) {
+      console.error('Error generando plantilla BOM:', e);
+      alert(`No se pudo generar la plantilla del BOM: ${e?.message || e}`);
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  };
 
   return (
     <>
@@ -148,6 +171,17 @@ export default function ProjectDetailView({ ctx }) {
 
                         <td className="px-5 py-4 text-right">
                           <div className="flex justify-end gap-2">
+                            {doc.id === 'i1' && canUpload && (
+                              <button
+                                onClick={handleDownloadBomTemplate}
+                                disabled={downloadingTemplate}
+                                className={`p-1.5 text-[#3B82F6] bg-[#3B82F6]/10 rounded hover:bg-[#3B82F6]/20 transition-colors flex items-center gap-1 ${downloadingTemplate ? 'opacity-50 cursor-wait' : ''}`}
+                                title="Descargar plantilla Excel del BOM con codigos SKU validados contra catalogo de Bodega"
+                              >
+                                {downloadingTemplate ? <Loader className="animate-spin" size={18} /> : <Download size={18} />}
+                                <span className="text-xs font-medium">Plantilla</span>
+                              </button>
+                            )}
                             {canUpload && doc.status !== 'Aprobado' && doc.status !== 'Aprobado con observaciones' && (
                               <div className="relative">
                                 {!doc.fileUrl ? (
